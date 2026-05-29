@@ -1,0 +1,329 @@
+Attribute VB_Name = "Main"
+Option Explicit
+Option Base 1
+
+' ==========================================================================================
+' PORTFOLIO OPTIMIZER VBA CODE
+' ==========================================================================================
+
+
+Private Const WEIGHTS_SHEET As String = "SimulatedWeights"
+Private Const DASH_SHEET As String = "Dashboard"
+Private Const ENGINE_SHEET As String = "Engine"
+Private Const CHART_SHEET As String = "ChartData"
+
+
+' ==========================================================
+' MAIN ENTRY POINTS
+' ==========================================================
+
+Sub GetDataFromAddin()
+    Application.ScreenUpdating = False
+    Call RunClean
+    Call updatePriceHistoryFromInfinForFund
+    Call updatePriceHistoryFromInfinForBench
+End Sub
+
+
+Sub RunUpdateMatrices()
+    Application.ScreenUpdating = False
+
+    Dim prices() As Variant, dates() As Date, assetNames() As String
+    Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
+    If UBound(prices, 2) < 1 Then Exit Sub
+
+    Dim strategies As Variant
+    strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN") ', "MIN VAR", "KELLY"
+
+    Call SyncDashboardHeaders(dates, assetNames, strategies)
+    Call UpdateConvictions
+    Call UpdateCurrentPrices(prices)
+
+    Dim logRets() As Double, meanRets() As Double
+    Call CalculateHistoricalStats(dates, prices, logRets, meanRets)
+    Call ProcessIndividualAssets(prices, dates, logRets, assetNames)
+
+    'MsgBox "Data Updated. Matrices Built.", vbInformation
+    Application.ScreenUpdating = True
+End Sub
+
+Sub RunAllSolvers()
+    Application.ScreenUpdating = False
+    Sheets(ENGINE_SHEET).Activate
+
+    Dim prices() As Variant, dates() As Date, assetNames() As String
+    Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
+
+    Dim logRets() As Double, meanRets() As Double
+    Call CalculateHistoricalStats(dates, prices, logRets, meanRets)
+
+    Dim covMat() As Double
+    covMat = CalculateCovariance(logRets, meanRets)
+    Call OutputCorrelationMatrix(covMat, assetNames)
+
+    Dim expReturns() As Double
+    Dim lastDate As Date
+    lastDate = dates(UBound(dates))
+    expReturns = CalculateExpectedReturns(meanRets, lastDate)
+
+    Dim wsDash As Worksheet
+    Set wsDash = Sheets(DASH_SHEET)
+    Dim inputStart As Long
+    inputStart = wsDash.Range("InputTableStart").Row + 1
+
+    Dim k As Integer, nAssets As Integer
+    nAssets = UBound(assetNames)
+    For k = 1 To nAssets
+        wsDash.Cells(inputStart + k - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value = expReturns(k)
+    Next k
+
+    Call WriteToEngine(covMat, expReturns)
+
+
+    Dim strategies As Variant
+    strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN") ', "MIN VAR", "KELLY"
+    Dim nStrat As Integer
+    nStrat = UBound(strategies)
+
+    Call SyncSimWeightsHeaders(dates, assetNames, strategies)
+
+    Dim minWeights() As Double, maxWeights() As Double
+    ReDim minWeights(1 To nAssets)
+    ReDim maxWeights(1 To nAssets)
+
+    For k = 1 To nAssets
+        If IsEmpty(wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column).Value) Then
+            maxWeights(k) = 1
+        Else
+            maxWeights(k) = wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column).Value
+        End If
+        If IsEmpty(wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column - 1).Value) Then
+            minWeights(k) = 0
+        Else
+            minWeights(k) = wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column - 1).Value
+        End If
+    Next k
+
+    Dim wsEngC As Worksheet
+    Set wsEngC = Sheets(ENGINE_SHEET)
+    Dim optRangeC As Range
+    Set optRangeC = wsEngC.Range("OptWeights")
+
+    Dim cVal As Double
+    Dim m As Integer
+    Dim i As Integer
+
+    Dim sumWeights() As Double
+    ReDim sumWeights(1 To nAssets)
+    Dim wCount As Integer
+    wCount = UBound(strategies) - 1 ' All strategies except MEAN
+
+    For m = 1 To nAssets
+        sumWeights(m) = 0
+    Next m
+
+    For i = LBound(strategies) To UBound(strategies)
+        Dim stratName As String
+        stratName = UCase(strategies(i))
+
+        Dim eqW As Double
+        eqW = 1 / nAssets
+        Dim wsEng As Worksheet
+        Set wsEng = Sheets(ENGINE_SHEET)
+        Dim optRange As Range
+        Set optRange = wsEng.Range("OptWeights")
+        Dim j As Integer
+        For j = 1 To nAssets
+            optRange.Cells(1, j).Value = eqW
+        Next j
+
+        If stratName = "EQUAL WEIGHT" Then
+            'done
+
+        ElseIf stratName = "CUSTOM" Then
+
+            Dim convictions() As Variant
+            convictions = wsDash.Range(wsDash.Cells(inputStart, wsDash.Range("customWeightCol").Column), wsDash.Cells(inputStart + nAssets - 1, wsDash.Range("customWeightCol").Column)).Value
+            convictions = Application.WorksheetFunction.Transpose(convictions)
+
+            Dim sum_ As Long
+            sum_ = 0
+            For m = 1 To nAssets
+                sum_ = sum_ + convictions(m)
+            Next m
+
+            For m = 1 To nAssets
+                cVal = convictions(m) / sum_
+                optRangeC.Cells(1, m).Value = cVal
+            Next m
+
+        ElseIf stratName = "ER/VOL" Then
+
+            For m = 1 To nAssets
+                cVal = wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value / _
+                          wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column + 1).Value
+                optRangeC.Cells(1, m).Value = cVal
+            Next m
+
+            Dim currentSum As Double
+            currentSum = Application.WorksheetFunction.sum(optRange)
+
+            If currentSum <> 0 Then
+                Dim finalWeights() As Variant
+                ReDim finalWeights(1 To nAssets)
+                For m = 1 To nAssets
+                    finalWeights(m) = optRange.Cells(1, m).Value / currentSum
+                Next m
+                optRange.Value = finalWeights
+            End If
+
+        ElseIf stratName = "MEAN" Then
+
+            For m = 1 To nAssets
+                optRange.Cells(1, m).Value = sumWeights(m) / wCount
+            Next m
+
+        Else
+
+            ' Optimization: Sharpe, Variance, Kelly, ERC UNCSTRD
+            Call RunSolver(CStr(strategies(i)), minWeights, maxWeights, False)
+
+        End If
+
+        Dim w As Variant
+        w = Sheets(ENGINE_SHEET).Range("OptWeights").Value
+
+        If stratName <> "MEAN" Then
+            For m = 1 To nAssets
+                sumWeights(m) = sumWeights(m) + w(1, m)
+            Next m
+        End If
+
+                Dim simPort As SimulatedPortfolioCls
+        Set simPort = New SimulatedPortfolioCls
+        simPort.StrategyName = CStr(strategies(i))
+
+        ' Reconstruct position array for the current simulation
+        Dim jPos As Integer
+        For jPos = 1 To nAssets
+            Dim pPrices() As Double, pDates() As Date
+            ReDim pPrices(1 To UBound(prices, 1))
+            ReDim pDates(1 To UBound(dates))
+            Dim iDay As Long
+            For iDay = 1 To UBound(prices, 1)
+                pPrices(iDay) = prices(iDay, jPos)
+                pDates(iDay) = dates(iDay)
+            Next iDay
+
+            Dim pos As PositionCls
+            Set pos = New PositionCls
+            pos.AssetName = assetNames(jPos)
+            pos.InitializeData pPrices, pDates
+
+            simPort.AddPosition assetNames(jPos), pos, w(1, jPos)
+        Next jPos
+
+        simPort.Simulate
+
+        Dim rf As Double
+        rf = Sheets(DASH_SHEET).Range("D4").Value
+        Dim conf As Double
+        conf = Sheets(DASH_SHEET).Range("D5").Value
+
+        simPort.ComputeMetrics rf, conf
+
+        Dim mRet As Double, mVol As Double, mSharpe As Double, mMDD As Double, mLen As Integer, mVaR As Double
+        mRet = simPort.Metrics.Ret
+        mVol = simPort.Metrics.Vol
+        mSharpe = simPort.Metrics.Sharpe
+        mMDD = simPort.Metrics.MDD
+        mLen = simPort.Metrics.MDDLen
+        mVaR = simPort.Metrics.VaR
+
+        Dim equityCurve() As Double, ddCurve() As Double, dailyWeights() As Double
+        equityCurve = simPort.EquityCurve
+        ddCurve = simPort.DrawdownCurve
+        dailyWeights = simPort.DailyWeights
+
+        Call OutputMetricsToRow(i - 1, CStr(strategies(i)), mRet, mVol, mSharpe, mMDD, mLen, mVaR, w, "StrategyTableStart", True)
+
+        Dim colOffset As Integer
+        colOffset = (nAssets + 1) + i
+        Call WriteCurveToSheet(equityCurve, colOffset)
+
+        Dim ddColOffset As Integer
+        ddColOffset = (nAssets + 1) + UBound(strategies) + i
+        Call WriteCurveToSheet(ddCurve, ddColOffset)
+
+        Dim wColStart As Integer
+        wColStart = 2 + (i - 1) * nAssets
+        Call WriteWeightsToSheet(dailyWeights, wColStart)
+    Next i
+
+    Dim ws As Worksheet
+    Set ws = Sheets(DASH_SHEET)
+    Dim startRow As Integer, startCol As Integer
+    startRow = ws.Range("StrategyWeightsStart").Row
+    startCol = ws.Range("StrategyWeightsStart").Column + UBound(strategies) - LBound(strategies) + 1
+
+    Dim equityPositions As Dictionary
+    Set equityPositions = DataUtils.GetEquityPositionsFromFund
+
+    Dim equitySum As Double
+    equitySum = 0
+
+    For i = 1 To equityPositions.count
+        equitySum = equitySum + equityPositions(equityPositions.Keys(i - 1)).Weight
+    Next i
+
+    For i = 1 To equityPositions.count
+        ws.Cells(startRow + i, startCol + 1).Value = equityPositions(equityPositions.Keys(i - 1)).Weight / equitySum
+        ws.Cells(startRow + i, startCol + 2).Value = ws.Cells(startRow + i, startCol + 1).Value - ws.Cells(startRow + i, startCol).Value
+        ws.Cells(startRow + i, startCol + nStrat + 3).Value = equityPositions(equityPositions.Keys(i - 1)).Weight
+        ws.Cells(startRow + i, startCol + nStrat + 4).Value = ws.Cells(startRow + i, startCol + nStrat + 3).Value - ws.Cells(startRow + i, startCol + nStrat + 2).Value
+    Next i
+
+    wsEngC.Activate
+    'Call DrawEfficientFrontier(nAssets, maxWeights)
+
+    Sheets(ENGINE_SHEET).Visible = False
+    Sheets(DASH_SHEET).Activate
+
+    Call UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
+
+
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    MsgBox "Optimization Completed.", vbInformation
+End Sub
+
+
+' ==========================================================
+' CLEAN
+' ==========================================================
+
+Sub RunClean()
+    Dim wsDash As Worksheet
+    Set wsDash = Sheets(DASH_SHEET)
+
+    Dim stratR As Long, stratC As Long
+    stratR = wsDash.Range("StrategyTableStart").Row + 1
+    stratC = wsDash.Range("StrategyTableStart").Column
+    wsDash.Range(wsDash.Cells(stratR, stratC), wsDash.Cells(stratR + 5, stratC + 100)).ClearContents
+
+    Dim inputR As Long, inputC As Long
+    inputR = wsDash.Range("InputTableStart").Row + 1
+    inputC = wsDash.Range("InputTableStart").Column
+    wsDash.Range(wsDash.Cells(inputR, inputC - 1), wsDash.Cells(stratR - 3, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
+    'wsDash.Range(wsDash.Cells(inputR, inputC + 2), wsDash.Cells(stratR - 3, inputC + 2)).ClearContents
+    'wsDash.Range(wsDash.Cells(inputR, wsDash.Range("AssetMetricsStart").Column - 1), wsDash.Cells(stratR - 2, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
+
+    Dim corrR As Long
+    corrR = wsDash.Range("CorrMatrixStart").Row + 1
+    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("CorrMatrixStart").Column), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column + 50)).ClearContents
+    corrR = wsDash.Range("StrategyWeightsStart").Row + 1
+    wsDash.Range(wsDash.Cells(corrR - 1, wsDash.Range("StrategyWeightsStart").Column + 1), wsDash.Cells(corrR - 1, wsDash.Range("CorrMatrixStart").Column)).ClearContents
+    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("StrategyWeightsStart").Column - 1), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column - 2)).ClearContents
+    Sheets(CHART_SHEET).Cells.ClearContents
+    Sheets(WEIGHTS_SHEET).Cells.ClearContents
+End Sub
