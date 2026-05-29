@@ -13,3 +13,9 @@ We have refactored the VBA code for the Portfolio Optimizer to improve modularit
 3. Remove the old versions of these `.bas` files.
 4. Go to File -> Import File... and import the `.bas` and `.cls` files from this `Refactored_VBA` directory.
 5. Save the workbook.
+
+### Dashboard Automation
+We have also included a new module `DashboardBuilder.bas`. This module contains subroutines that programmatically generate and format the Dashboard layout, including dynamically creating inputs, strategy tables, and settings blocks.
+1. Import `DashboardBuilder.bas` into your VBE.
+2. Run `BuildMainDashboard()` to instantly scaffold a clean layout and generate the required named ranges (like `InputTableStart`, `StrategyWeightsStart`, and `EqWeightingLimit`).
+3. You can also use `AddCustomSection()` to dynamically add new tables to the Dashboard.
