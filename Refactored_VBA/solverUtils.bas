@@ -174,3 +174,40 @@ Sub RunSolver(Mode As String, minWeights() As Double, maxWeights() As Double, Op
     End If
 
 End Sub
+Function SolveForT(weights() As Double, expectations() As Double) As Double
+    InitializeGlobals
+    Dim n As Integer
+    n = UBound(weights)
+
+    Dim numerator As Double
+    Dim denominator As Double
+    Dim sumW As Double
+
+    numerator = 0
+    denominator = 0
+    sumW = 0
+
+    Dim i As Integer
+    For i = 1 To n
+        numerator = numerator + (weights(i) * expectations(i))
+        sumW = sumW + weights(i)
+    Next i
+
+    If sumW = 0 Then
+        SolveForT = 0
+        Exit Function
+    End If
+
+    Dim meanE As Double
+    meanE = numerator / sumW
+
+    For i = 1 To n
+        denominator = denominator + (weights(i) * ((expectations(i) - meanE) ^ 2))
+    Next i
+
+    If denominator = 0 Then
+        SolveForT = 0
+    Else
+        SolveForT = numerator / Sqr(denominator)
+    End If
+End Function
