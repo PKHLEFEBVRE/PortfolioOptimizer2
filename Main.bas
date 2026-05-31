@@ -170,6 +170,11 @@ Sub RunAllSolvers()
 
     Dim masterPortfolios As Object
     Set masterPortfolios = CreateObject("Scripting.Dictionary")
+
+    ' --- COMPUTE RISK ALLOCATION OVERLAY ---
+    Dim riskMultiplier As Double
+    riskMultiplier = allocationLogic.ComputeFinalRiskFactor()
+    ' ---------------------------------------
     ' ------------------------------------
 
     Dim optimizer As OptimizerCls
@@ -191,6 +196,11 @@ Sub RunAllSolvers()
 
         ' 3. Optimize the weights based on strategy
         optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, assetNames
+
+        ' Apply Risk Overlay to downscale investments for specific strategies
+        If simPort.StrategyName <> "EQUAL WEIGHT" And simPort.StrategyName <> "MEAN" Then
+            simPort.ApplyRiskOverlay riskMultiplier
+        End If
 
         ' 4. Simulate portfolio over time
         simPort.Simulate

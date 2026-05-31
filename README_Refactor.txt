@@ -21,3 +21,6 @@ To view the new Positions Dashboard:
 10. Replace `SimulatedPortfolioCls.cls` one final time (it now includes self-managing weight accessors).
 
 11. Replace `Main.bas` one last time. I have wired the `RunAllSolvers` loop to construct the `masterPortfolios` dictionary and at the very end of the script it correctly calls the `PositionDashboard` module to print out both the Positions table and the Portfolios table.
+
+12. Replace `allocationLogic.bas`. I updated it to cleanly expose the multiplier directly without relying on dashboard macros.
+13. Replace `Main.bas` and `SimulatedPortfolioCls.cls` one final time to incorporate the risk multiplier overlay on portfolio weights.

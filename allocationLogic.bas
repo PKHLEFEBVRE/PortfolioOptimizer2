@@ -4,8 +4,7 @@ Option Explicit
 ' =========================================================================
 ' DOWNSIDE BETA & CVaR EQUITY ALLOCATION MODULE
 ' =========================================================================
-Sub adjustForMDD()
-
+Function ComputeFinalRiskFactor() As Double
     ' 1. Declare variables for all 4 metrics and their allocation factors
     Dim DSBeta As Double, DDFactor As Double
     Dim CVaRFactor As Double, benchCVaR As Double, portCVaR As Double
@@ -22,46 +21,23 @@ Sub adjustForMDD()
     ' 3. Reconcile the constraints: Select the absolute strictest factor
     finalRiskFactor = Application.WorksheetFunction.Average(DDFactor, CVaRFactor, SemiDevFactor, HistoricalMDDFactor)
 
-    ' 4. Clean dashboard readout via MsgBox
-    MsgBox "--- PORTFOLIO RISK FACTORS (70% Target) ---" & vbCr & vbCr & _
-           "1. DOWNSIDE BETA: " & Round(DSBeta, 2) & " (Limit: " & Round(DDFactor * 100, 1) & "%)" & vbCr & vbCr & _
-           "2. TAIL RISK (95% CVaR):" & vbCr & _
-           "   Bench: " & Round(benchCVaR * 100, 2) & "%  |  Port: " & Round(portCVaR * 100, 2) & "%" & vbCr & _
-           "   Limit: " & Round(CVaRFactor * 100, 1) & "%)" & vbCr & vbCr & _
-           "3. VOLATILITY (Semi-Dev < 0%):" & vbCr & _
-           "   Bench: " & Round(benchSemiDev * 100, 2) & "%  |  Port: " & Round(portSemiDev * 100, 2) & "%" & vbCr & _
-           "   Limit: " & Round(SemiDevFactor * 100, 1) & "%)" & vbCr & vbCr & _
-           "4. HISTORICAL MAX DRAWDOWN:" & vbCr & _
-           "   Bench: " & Round(benchMDD * 100, 2) & "%  |  Port: " & Round(portMDD * 100, 2) & "%" & vbCr & _
-           "   Limit: " & Round(HistoricalMDDFactor * 100, 1) & "%)" & vbCr & _
-           "----------------------------------------" & vbCr & vbCr & _
-           "FINAL APPLIED RISK FACTOR: " & Round(finalRiskFactor * 100, 1) & "%", vbInformation, "Risk Adjustments"
+    ' 4. Clean dashboard readout via MsgBox (Optional, kept for user transparency)
+    'MsgBox "--- PORTFOLIO RISK FACTORS (70% Target) ---" & vbCr & vbCr & _
+    '       "1. DOWNSIDE BETA: " & Round(DSBeta, 2) & " (Limit: " & Round(DDFactor * 100, 1) & "%)" & vbCr & vbCr & _
+    '       "2. TAIL RISK (95% CVaR):" & vbCr & _
+    '       "   Bench: " & Round(benchCVaR * 100, 2) & "%  |  Port: " & Round(portCVaR * 100, 2) & "%" & vbCr & _
+    '       "   Limit: " & Round(CVaRFactor * 100, 1) & "%)" & vbCr & vbCr & _
+    '       "3. VOLATILITY (Semi-Dev < 0%):" & vbCr & _
+    '       "   Bench: " & Round(benchSemiDev * 100, 2) & "%  |  Port: " & Round(portSemiDev * 100, 2) & "%" & vbCr & _
+    '       "   Limit: " & Round(SemiDevFactor * 100, 1) & "%)" & vbCr & vbCr & _
+    '       "4. HISTORICAL MAX DRAWDOWN:" & vbCr & _
+    '       "   Bench: " & Round(benchMDD * 100, 2) & "%  |  Port: " & Round(portMDD * 100, 2) & "%" & vbCr & _
+    '       "   Limit: " & Round(HistoricalMDDFactor * 100, 1) & "%)" & vbCr & _
+    '       "----------------------------------------" & vbCr & vbCr & _
+    '       "FINAL APPLIED RISK FACTOR: " & Round(finalRiskFactor * 100, 1) & "%", vbInformation, "Risk Adjustments"
 
-    Dim fullAllocations As Variant, computedAllocations As Variant
-    Set fullAllocations = ThisWorkbook.Sheets("Dashboard").Range("StrategyWeightsStart").CurrentRegion
-    computedAllocations = Intersect(fullAllocations, fullAllocations.Offset(1, 1)).Value2
-
-    Dim nStrat As Integer, nAssets As Integer
-    nStrat = (UBound(computedAllocations, 2) - LBound(computedAllocations, 2) - 1) / 3 - 2
-    nAssets = UBound(computedAllocations, 1) - LBound(computedAllocations, 1)
-
-    Dim i As Integer, j As Integer
-    Dim equityPositions As Dictionary
-    Set equityPositions = DataUtils.GetEquityPositionsFromFund
-
-    For j = 2 To nAssets + 1
-        For i = 2 To nStrat + 1
-            ' Apply the unified strictest risk limit
-            computedAllocations(j, (nStrat + 2) * 2 + i) = computedAllocations(j, i) * finalRiskFactor
-        Next i
-        i = i - 1
-        computedAllocations(j, (nStrat + 2) * 2 + i + 1) = equityPositions(equityPositions.Keys(j - 2)).Weight
-        computedAllocations(j, (nStrat + 2) * 2 + i + 2) = computedAllocations(j, nStrat * 2 + i) - computedAllocations(j, nStrat * 2 + i + 1)
-    Next j
-
-    ThisWorkbook.Sheets("Dashboard").Range("StrategyWeightsStart").Resize(UBound(computedAllocations, 1), UBound(computedAllocations, 2)).Value = computedAllocations
-
-End Sub
+    ComputeFinalRiskFactor = finalRiskFactor
+End Function
 
 
 Private Function adjustForConvictions(ByVal DDFactor As Double) As Double

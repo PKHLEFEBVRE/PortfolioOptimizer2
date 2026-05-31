@@ -87,6 +87,13 @@ Public Function GetWeight(ByVal assetName As String) As Double
     End If
 End Function
 
+Public Sub ApplyRiskOverlay(ByVal multiplier As Double)
+    Dim key As Variant
+    For Each key In p_Weights.Keys
+        p_Weights(key) = p_Weights(key) * multiplier
+    Next key
+End Sub
+
 Public Sub Simulate()
     If p_Positions.Count = 0 Then Exit Sub
 
