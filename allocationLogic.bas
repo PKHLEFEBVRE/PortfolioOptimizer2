@@ -76,7 +76,7 @@ Private Sub ComputeRiskFactors(ByRef DSBeta As Double, ByRef DDFactor As Double,
     Set wb = ThisWorkbook
     On Error Resume Next
     Set wsChart = wb.Sheets("ChartData")
-    Set wsBench = wb.Sheets("BenchData")
+    Set wsBench = wb.Sheets("Data")
     On Error GoTo 0
 
     If wsChart Is Nothing Or wsBench Is Nothing Then
@@ -124,7 +124,7 @@ Private Sub ComputeMDDFactor(ByRef DSBeta As Double, ByRef DDFactor As Double, O
     Set wb = ThisWorkbook
     On Error Resume Next
     Set wsChart = wb.Sheets("ChartData")
-    Set wsBench = wb.Sheets("BenchData")
+    Set wsBench = wb.Sheets("Data")
     On Error GoTo 0
 
     If wsChart Is Nothing Or wsBench Is Nothing Then
@@ -261,8 +261,8 @@ Private Function LoadAndAlignData(wsChart As Worksheet, meanColChart As Long, ws
 
     arrChartDates = wsChart.Range(wsChart.Cells(1, 1), wsChart.Cells(lastRowChart, 1)).Value
     arrChartPrices = wsChart.Range(wsChart.Cells(1, meanColChart), wsChart.Cells(lastRowChart, meanColChart)).Value
-    arrBenchDates = wsBench.Range(wsBench.Cells(1, 5), wsBench.Cells(lastRowBench, 5)).Value
-    arrBenchPrices = wsBench.Range(wsBench.Cells(1, 8), wsBench.Cells(lastRowBench, 8)).Value
+    arrBenchDates = wsBench.Range(wsBench.Cells(1, benchCol - 3), wsBench.Cells(lastRowBench, benchCol - 3)).Value
+    arrBenchPrices = wsBench.Range(wsBench.Cells(1, benchCol), wsBench.Cells(lastRowBench, benchCol)).Value
 
     Dim dictBench As Object
     Set dictBench = CreateObject("Scripting.Dictionary")

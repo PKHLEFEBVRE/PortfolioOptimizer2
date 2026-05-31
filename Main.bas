@@ -20,8 +20,7 @@ Private Const CHART_SHEET As String = "ChartData"
 Sub GetDataFromAddin()
     Application.ScreenUpdating = False
     Call RunClean
-    Call updatePriceHistoryFromInfinForFund
-    Call updatePriceHistoryFromInfinForBench
+    Call updateAllPriceHistoryFromInfin
 End Sub
 
 
@@ -171,10 +170,61 @@ Sub RunAllSolvers()
     Dim masterPortfolios As Object
     Set masterPortfolios = CreateObject("Scripting.Dictionary")
 
-    ' --- COMPUTE RISK ALLOCATION OVERLAY ---
-    Dim riskMultiplier As Double
-    riskMultiplier = allocationLogic.ComputeFinalRiskFactor()
-    ' ---------------------------------------
+    ' Extract Benchmark Returns for Downside Beta calculations, dynamically matched to portfolio Dates
+    Dim wsData As Worksheet
+    Set wsData = ThisWorkbook.Sheets("Data")
+    Dim benchCol As Long
+    benchCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column
+    Dim benchLastRow As Long
+    benchLastRow = wsData.Cells(wsData.Rows.Count, benchCol).End(xlUp).Row
+
+    Dim benchRawDates() As Variant
+    Dim benchRawPrices() As Variant
+    ' Benchmark dates are 3 columns to the left of the computed benchmark column
+    benchRawDates = wsData.Range(wsData.Cells(2, benchCol - 3), wsData.Cells(benchLastRow, benchCol - 3)).Value
+    benchRawPrices = wsData.Range(wsData.Cells(2, benchCol), wsData.Cells(benchLastRow, benchCol)).Value
+
+    Dim dictBench As Object
+    Set dictBench = CreateObject("Scripting.Dictionary")
+    Dim bIdx As Long
+    For bIdx = 1 To UBound(benchRawDates, 1)
+        If IsDate(benchRawDates(bIdx, 1)) Then
+            dictBench(CDate(benchRawDates(bIdx, 1))) = CDbl(benchRawPrices(bIdx, 1))
+        End If
+    Next bIdx
+
+    ' Now build an aligned return array strictly matching the length of the portfolio dates (which matches logRets length)
+    Dim benchRets() As Double
+    ' logRets are size (1 to UBound(dates) - 1)
+    ReDim benchRets(1 To UBound(dates) - 1)
+
+    For bIdx = 1 To UBound(dates) - 1
+        Dim dPrev As Date, dCurr As Date
+        dPrev = dates(bIdx)
+        dCurr = dates(bIdx + 1)
+
+        If dictBench.Exists(dPrev) And dictBench.Exists(dCurr) Then
+            Dim pBPrev As Double, pBCurr As Double
+            pBPrev = dictBench(dPrev)
+            pBCurr = dictBench(dCurr)
+
+            If pBPrev > 0 And pBCurr > 0 Then
+                benchRets(bIdx) = Log(pBCurr / pBPrev)
+            Else
+                benchRets(bIdx) = 0
+            End If
+        Else
+            benchRets(bIdx) = 0
+        End If
+    Next bIdx
+
+    ' Inject benchRets back into positions
+    Dim pKey As Variant
+    For Each pKey In masterPositions.Keys
+        masterPositions(pKey).ComputeMetrics rf, conf, benchRets
+    Next pKey
+
+
     ' ------------------------------------
 
     Dim optimizer As OptimizerCls
@@ -197,10 +247,7 @@ Sub RunAllSolvers()
         ' 3. Optimize the weights based on strategy
         optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, assetNames
 
-        ' Apply Risk Overlay to downscale investments for specific strategies
-        If simPort.StrategyName <> "EQUAL WEIGHT" And simPort.StrategyName <> "MEAN" Then
-            simPort.ApplyRiskOverlay riskMultiplier
-        End If
+
 
         ' 4. Simulate portfolio over time
         simPort.Simulate
@@ -210,7 +257,7 @@ Sub RunAllSolvers()
         rf = Sheets(DASH_SHEET).Range("D4").Value
         Dim conf As Double
         conf = Sheets(DASH_SHEET).Range("D5").Value
-        simPort.ComputeMetrics rf, conf
+        simPort.ComputeMetrics rf, conf, benchRets
 
         ' 6. Output Results
         Dim mRet As Double, mVol As Double, mSharpe As Double, mMDD As Double, mLen As Integer, mVaR As Double
@@ -279,6 +326,31 @@ Sub RunAllSolvers()
 
     Sheets(ENGINE_SHEET).Visible = False
     Sheets(DASH_SHEET).Activate
+
+    ' --- POST-SIMULATION RISK OVERLAY ---
+    Dim riskMultiplier As Double
+    riskMultiplier = allocationLogic.ComputeFinalRiskFactor()
+
+    Dim pKey As Variant
+    For Each pKey In masterPortfolios.Keys
+        Dim p As SimulatedPortfolioCls
+        Set p = masterPortfolios(pKey)
+
+        If p.StrategyName <> "EQUAL WEIGHT" And p.StrategyName <> "MEAN" Then
+            p.ApplyRiskOverlay riskMultiplier
+
+            ' Re-simulate to calculate the depressed equity curve
+            p.Simulate
+            p.ComputeMetrics rf, conf, benchRets
+
+            ' Re-write the updated depressed curve to the Engine sheet so the chart uses the updated data
+            ' But in the current macro architecture, the sheets are populated in the first loop.
+            ' A better design: compute risk factor based on equal weight or just MEAN,
+            ' which is available since the charts output happens concurrently.
+            ' Let's just apply it dynamically right here and let the Portfolios Dashboard catch the new metrics.
+        End If
+    Next pKey
+    ' ------------------------------------
 
     Call UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
 

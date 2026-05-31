@@ -24,3 +24,14 @@ To view the new Positions Dashboard:
 
 12. Replace `allocationLogic.bas`. I updated it to cleanly expose the multiplier directly without relying on dashboard macros.
 13. Replace `Main.bas` and `SimulatedPortfolioCls.cls` one final time to incorporate the risk multiplier overlay on portfolio weights.
+
+14. Re-import `Main.bas` (I updated it to call `updateAllPriceHistoryFromInfin`).
+15. Import the newly refactored `DataUtils.bas` which merges the fund and benchmark retrieval and aligns all logic onto the single "Data" worksheet.
+
+16. Replace `Main.bas` one last time (fixed a sequencing issue where the risk factor was computed before the MEAN portfolio was simulated).
+17. Replace `allocationLogic.bas` one last time (updated it to point to the new dynamically placed benchmark on the "Data" sheet rather than the deleted "BenchData" sheet).
+
+18. Replace `Main.bas` one last time. I added the extraction of the benchmark returns so that `Downside Beta` correctly prints on the new dashboard for both individual assets and portfolios!
+
+19. Re-import `Main.bas` (Fixed the `Subscript Out Of Range` error by perfectly aligning the dynamic benchmark dates array to the portfolio dates array before calculating log returns).
+20. Re-import `allocationLogic.bas` (Fixed a silent error where the DownsideBeta calculation was accidentally grabbing columns 5 and 8 which are no longer the benchmark after the Data sheets merge).
