@@ -13,3 +13,5 @@ You can import these files back into your `Portfolio_Optimizer_MLSU.xlsm` workbo
 To view the new Positions Dashboard:
 5. Import `PositionDashboard.bas`
 6. Run the macro `GeneratePositionsDashboard` to output the new Dashboard to the "Positions Dashboard" worksheet.
+
+7. Replace `Main.bas` one more time (I have updated it so that it optimally initializes the `PositionCls` objects just once before running the simulation loops).

@@ -122,6 +122,29 @@ Sub RunAllSolvers()
         sumWeights(m) = 0
     Next m
 
+    ' --- PRE-CACHE ALL POSITIONS ONCE ---
+    Dim masterPositions As Object
+    Set masterPositions = CreateObject("Scripting.Dictionary")
+
+    Dim cacheIdx As Integer
+    For cacheIdx = 1 To nAssets
+        Dim pPrices() As Double, pDates() As Date
+        ReDim pPrices(1 To UBound(prices, 1))
+        ReDim pDates(1 To UBound(dates))
+        Dim iDay As Long
+        For iDay = 1 To UBound(prices, 1)
+            pPrices(iDay) = prices(iDay, cacheIdx)
+            pDates(iDay) = dates(iDay)
+        Next iDay
+
+        Dim cachePos As PositionCls
+        Set cachePos = New PositionCls
+        cachePos.AssetName = assetNames(cacheIdx)
+        cachePos.InitializeData pPrices, pDates
+        masterPositions.Add assetNames(cacheIdx), cachePos
+    Next cacheIdx
+    ' ------------------------------------
+
     For i = LBound(strategies) To UBound(strategies)
         Dim stratName As String
         stratName = UCase(strategies(i))
@@ -203,24 +226,10 @@ Sub RunAllSolvers()
         Set simPort = New SimulatedPortfolioCls
         simPort.StrategyName = CStr(strategies(i))
 
-        ' Reconstruct position array for the current simulation
+        ' Add pre-cached positions to the portfolio
         Dim jPos As Integer
         For jPos = 1 To nAssets
-            Dim pPrices() As Double, pDates() As Date
-            ReDim pPrices(1 To UBound(prices, 1))
-            ReDim pDates(1 To UBound(dates))
-            Dim iDay As Long
-            For iDay = 1 To UBound(prices, 1)
-                pPrices(iDay) = prices(iDay, jPos)
-                pDates(iDay) = dates(iDay)
-            Next iDay
-
-            Dim pos As PositionCls
-            Set pos = New PositionCls
-            pos.AssetName = assetNames(jPos)
-            pos.InitializeData pPrices, pDates
-
-            simPort.AddPosition assetNames(jPos), pos, w(1, jPos)
+            simPort.AddPosition assetNames(jPos), masterPositions(assetNames(jPos)), w(1, jPos)
         Next jPos
 
         simPort.Simulate
