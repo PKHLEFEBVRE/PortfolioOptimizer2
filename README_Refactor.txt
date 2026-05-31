@@ -15,3 +15,7 @@ To view the new Positions Dashboard:
 6. Run the macro `GeneratePositionsDashboard` to output the new Dashboard to the "Positions Dashboard" worksheet.
 
 7. Replace `Main.bas` one more time (I have updated it so that it optimally initializes the `PositionCls` objects just once before running the simulation loops).
+
+8. Import `OptimizerCls.cls`.
+9. Replace `Main.bas` one final time (this update drastically simplifies the RunAllSolvers loop by offloading strategy resolution and solver orchestration to OptimizerCls).
+10. Replace `SimulatedPortfolioCls.cls` one final time (it now includes self-managing weight accessors).

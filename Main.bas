@@ -145,102 +145,37 @@ Sub RunAllSolvers()
     Next cacheIdx
     ' ------------------------------------
 
+    Dim optimizer As OptimizerCls
+    Set optimizer = New OptimizerCls
+
     For i = LBound(strategies) To UBound(strategies)
-        Dim stratName As String
-        stratName = UCase(strategies(i))
-
-        Dim eqW As Double
-        eqW = 1 / nAssets
-        Dim wsEng As Worksheet
-        Set wsEng = Sheets(ENGINE_SHEET)
-        Dim optRange As Range
-        Set optRange = wsEng.Range("OptWeights")
-        Dim j As Integer
-        For j = 1 To nAssets
-            optRange.Cells(1, j).Value = eqW
-        Next j
-
-        If stratName = "EQUAL WEIGHT" Then
-            'done
-
-        ElseIf stratName = "CUSTOM" Then
-
-            Dim convictions() As Variant
-            convictions = wsDash.Range(wsDash.Cells(inputStart, wsDash.Range("customWeightCol").Column), wsDash.Cells(inputStart + nAssets - 1, wsDash.Range("customWeightCol").Column)).Value
-            convictions = Application.WorksheetFunction.Transpose(convictions)
-
-            Dim sum_ As Long
-            sum_ = 0
-            For m = 1 To nAssets
-                sum_ = sum_ + convictions(m)
-            Next m
-
-            For m = 1 To nAssets
-                cVal = convictions(m) / sum_
-                optRangeC.Cells(1, m).Value = cVal
-            Next m
-
-        ElseIf stratName = "ER/VOL" Then
-
-            For m = 1 To nAssets
-                cVal = wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value / _
-                          wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column + 1).Value
-                optRangeC.Cells(1, m).Value = cVal
-            Next m
-
-            Dim currentSum As Double
-            currentSum = Application.WorksheetFunction.sum(optRange)
-
-            If currentSum <> 0 Then
-                Dim finalWeights() As Variant
-                ReDim finalWeights(1 To nAssets)
-                For m = 1 To nAssets
-                    finalWeights(m) = optRange.Cells(1, m).Value / currentSum
-                Next m
-                optRange.Value = finalWeights
-            End If
-
-        ElseIf stratName = "MEAN" Then
-
-            For m = 1 To nAssets
-                optRange.Cells(1, m).Value = sumWeights(m) / wCount
-            Next m
-
-        Else
-
-            ' Optimization: Sharpe, Variance, Kelly, ERC UNCSTRD
-            Call RunSolver(CStr(strategies(i)), minWeights, maxWeights, False)
-
-        End If
-
-        Dim w As Variant
-        w = Sheets(ENGINE_SHEET).Range("OptWeights").Value
-
-        If stratName <> "MEAN" Then
-            For m = 1 To nAssets
-                sumWeights(m) = sumWeights(m) + w(1, m)
-            Next m
-        End If
-
-                Dim simPort As SimulatedPortfolioCls
+        Dim simPort As SimulatedPortfolioCls
         Set simPort = New SimulatedPortfolioCls
         simPort.StrategyName = CStr(strategies(i))
 
-        ' Add pre-cached positions to the portfolio
+        ' 1. Add pre-cached positions
         Dim jPos As Integer
         For jPos = 1 To nAssets
-            simPort.AddPosition assetNames(jPos), masterPositions(assetNames(jPos)), w(1, jPos)
+            simPort.AddPosition assetNames(jPos), masterPositions(assetNames(jPos))
         Next jPos
 
+        ' 2. Initialize with equal weights
+        simPort.SetEqualWeights
+
+        ' 3. Optimize the weights based on strategy
+        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, assetNames
+
+        ' 4. Simulate portfolio over time
         simPort.Simulate
 
+        ' 5. Compute performance metrics
         Dim rf As Double
         rf = Sheets(DASH_SHEET).Range("D4").Value
         Dim conf As Double
         conf = Sheets(DASH_SHEET).Range("D5").Value
-
         simPort.ComputeMetrics rf, conf
 
+        ' 6. Output Results
         Dim mRet As Double, mVol As Double, mSharpe As Double, mMDD As Double, mLen As Integer, mVaR As Double
         mRet = simPort.Metrics.Ret
         mVol = simPort.Metrics.Vol
@@ -254,7 +189,15 @@ Sub RunAllSolvers()
         ddCurve = simPort.DrawdownCurve
         dailyWeights = simPort.DailyWeights
 
-        Call OutputMetricsToRow(i - 1, CStr(strategies(i)), mRet, mVol, mSharpe, mMDD, mLen, mVaR, w, "StrategyTableStart", True)
+        ' Reconstruct weights array for backwards compatibility with OutputMetricsToRow
+        Dim wArr() As Double
+        ReDim wArr(1 To 1, 1 To nAssets)
+        Dim idx As Integer
+        For idx = 1 To nAssets
+            wArr(1, idx) = simPort.GetWeight(assetNames(idx))
+        Next idx
+
+        Call OutputMetricsToRow(i - 1, CStr(strategies(i)), mRet, mVol, mSharpe, mMDD, mLen, mVaR, wArr, "StrategyTableStart", True)
 
         Dim colOffset As Integer
         colOffset = (nAssets + 1) + i

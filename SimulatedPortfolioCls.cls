@@ -49,12 +49,43 @@ Private Sub Class_Initialize()
     Set p_Metrics = New MetricsCalculatorCls
 End Sub
 
-Public Sub AddPosition(ByVal assetName As String, ByRef pos As PositionCls, ByVal weight As Double)
+Public Sub AddPosition(ByVal assetName As String, ByRef pos As PositionCls)
     If Not p_Positions.Exists(assetName) Then
         p_Positions.Add assetName, pos
+    End If
+End Sub
+
+Public Sub SetEqualWeights()
+    Dim nAssets As Long
+    nAssets = p_Positions.Count
+    If nAssets = 0 Then Exit Sub
+
+    Dim eqW As Double
+    eqW = 1# / nAssets
+
+    p_Weights.RemoveAll
+
+    Dim key As Variant
+    For Each key In p_Positions.Keys
+        p_Weights.Add key, eqW
+    Next key
+End Sub
+
+Public Sub SetWeight(ByVal assetName As String, ByVal weight As Double)
+    If p_Weights.Exists(assetName) Then
+        p_Weights(assetName) = weight
+    Else
         p_Weights.Add assetName, weight
     End If
 End Sub
+
+Public Function GetWeight(ByVal assetName As String) As Double
+    If p_Weights.Exists(assetName) Then
+        GetWeight = p_Weights(assetName)
+    Else
+        GetWeight = 0
+    End If
+End Function
 
 Public Sub Simulate()
     If p_Positions.Count = 0 Then Exit Sub
