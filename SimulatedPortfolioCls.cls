@@ -151,19 +151,19 @@ Public Sub Simulate()
         Dim prevTotal As Double
         prevTotal = p_EquityCurve(i - 1, 1)
 
-        ' Rebalance monthly
-        If Month(dCurr) <> Month(dPrev) Then
-            For j = 1 To nAssets
-                w = p_Weights(keys(j - 1))
-                shares(j) = (prevTotal * w) / prices(i, j)
-            Next j
-        End If
-
         Dim assetVal As Double
         assetVal = 0
         For j = 1 To nAssets
             assetVal = assetVal + shares(j) * prices(i, j)
         Next j
+
+        ' Rebalance monthly AFTER calculating the day's total value
+        If Month(dCurr) <> Month(dPrev) Then
+            For j = 1 To nAssets
+                w = p_Weights(keys(j - 1))
+                shares(j) = (assetVal * w) / prices(i, j)
+            Next j
+        End If
 
         p_EquityCurve(i, 1) = assetVal
 

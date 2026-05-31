@@ -19,3 +19,5 @@ To view the new Positions Dashboard:
 8. Import `OptimizerCls.cls`.
 9. Replace `Main.bas` one final time (this update drastically simplifies the RunAllSolvers loop by offloading strategy resolution and solver orchestration to OptimizerCls).
 10. Replace `SimulatedPortfolioCls.cls` one final time (it now includes self-managing weight accessors).
+
+11. Replace `Main.bas` one last time. I have wired the `RunAllSolvers` loop to construct the `masterPortfolios` dictionary and at the very end of the script it correctly calls the `PositionDashboard` module to print out both the Positions table and the Portfolios table.

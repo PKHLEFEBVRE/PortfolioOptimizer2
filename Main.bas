@@ -126,6 +126,14 @@ Sub RunAllSolvers()
     Dim masterPositions As Object
     Set masterPositions = CreateObject("Scripting.Dictionary")
 
+    Dim convictions As Object
+    Set convictions = convictionsUtils.getConvictions()
+
+    Dim rf As Double
+    rf = Sheets(DASH_SHEET).Range("D4").Value
+    Dim conf As Double
+    conf = Sheets(DASH_SHEET).Range("D5").Value
+
     Dim cacheIdx As Integer
     For cacheIdx = 1 To nAssets
         Dim pPrices() As Double, pDates() As Date
@@ -141,8 +149,27 @@ Sub RunAllSolvers()
         Set cachePos = New PositionCls
         cachePos.AssetName = assetNames(cacheIdx)
         cachePos.InitializeData pPrices, pDates
+        cachePos.ComputeMetrics rf, conf
+
+        If convictions.Exists(cachePos.AssetName) Then
+            Dim cDict As Object
+            Set cDict = convictions(cachePos.AssetName)
+            On Error Resume Next
+            cachePos.Conviction = cDict("conviction")
+            cachePos.TP = cDict("TP")
+            cachePos.TPProba = cDict("TP proba")
+            cachePos.SP = cDict("SP")
+            cachePos.SPProba = cDict("SP proba")
+            On Error GoTo 0
+        End If
+
+        cachePos.ExpectedReturn = expReturns(cacheIdx)
+
         masterPositions.Add assetNames(cacheIdx), cachePos
     Next cacheIdx
+
+    Dim masterPortfolios As Object
+    Set masterPortfolios = CreateObject("Scripting.Dictionary")
     ' ------------------------------------
 
     Dim optimizer As OptimizerCls
@@ -210,6 +237,8 @@ Sub RunAllSolvers()
         Dim wColStart As Integer
         wColStart = 2 + (i - 1) * nAssets
         Call WriteWeightsToSheet(dailyWeights, wColStart)
+
+        masterPortfolios.Add simPort.StrategyName, simPort
     Next i
 
     Dim ws As Worksheet
@@ -243,6 +272,9 @@ Sub RunAllSolvers()
 
     Call UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
 
+    ' Generate the new unified Dashboard
+    Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
+    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios, assetNames)
 
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
