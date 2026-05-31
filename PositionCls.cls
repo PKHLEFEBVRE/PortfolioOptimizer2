@@ -15,6 +15,15 @@ Private p_Dates() As Date
 Private p_LogRets() As Double
 Private p_Metrics As MetricsCalculatorCls
 
+' Convictions Attributes
+Private p_Conviction As Double
+Private p_TP As Double
+Private p_TPProba As Double
+Private p_SP As Double
+Private p_SPProba As Double
+Private p_ExpectedReturn As Double
+
+
 Public Property Get AssetName() As String
     AssetName = p_AssetName
 End Property
@@ -38,6 +47,55 @@ End Property
 Public Property Get Metrics() As MetricsCalculatorCls
     Set Metrics = p_Metrics
 End Property
+
+Public Property Get Conviction() As Double
+    Conviction = p_Conviction
+End Property
+
+Public Property Let Conviction(ByVal value As Double)
+    p_Conviction = value
+End Property
+
+Public Property Get TP() As Double
+    TP = p_TP
+End Property
+
+Public Property Let TP(ByVal value As Double)
+    p_TP = value
+End Property
+
+Public Property Get TPProba() As Double
+    TPProba = p_TPProba
+End Property
+
+Public Property Let TPProba(ByVal value As Double)
+    p_TPProba = value
+End Property
+
+Public Property Get SP() As Double
+    SP = p_SP
+End Property
+
+Public Property Let SP(ByVal value As Double)
+    p_SP = value
+End Property
+
+Public Property Get SPProba() As Double
+    SPProba = p_SPProba
+End Property
+
+Public Property Let SPProba(ByVal value As Double)
+    p_SPProba = value
+End Property
+
+Public Property Get ExpectedReturn() As Double
+    ExpectedReturn = p_ExpectedReturn
+End Property
+
+Public Property Let ExpectedReturn(ByVal value As Double)
+    p_ExpectedReturn = value
+End Property
+
 
 Private Sub Class_Initialize()
     Set p_Metrics = New MetricsCalculatorCls

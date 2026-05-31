@@ -9,3 +9,7 @@ You can import these files back into your `Portfolio_Optimizer_MLSU.xlsm` workbo
 2. Import `PositionCls.cls`
 3. Import `SimulatedPortfolioCls.cls`
 4. Replace existing modules with `Main.bas`, `assetUtils.bas`, `portfolioUtils.bas`, and `allocationLogic.bas`.
+
+To view the new Positions Dashboard:
+5. Import `PositionDashboard.bas`
+6. Run the macro `GeneratePositionsDashboard` to output the new Dashboard to the "Positions Dashboard" worksheet.
