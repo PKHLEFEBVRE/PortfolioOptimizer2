@@ -58,3 +58,5 @@ To view the new Positions Dashboard:
 34. Re-import `DataUtils.bas` again. I have finally implemented the "moderate refactor" of the `AlignSecurityDataRefactored` macro! It is now a clean 30-line orchestrator that delegates to `DetermineMasterDates`, `BuildBenchmarkFromAssets`, and `BackfillMissingAssetHistory`.
 
 35. Replace `Main.bas` one final time. I fixed a simple `Duplicate declaration in current scope` compile error that was caused by defining the `rf` and `conf` variables both before and inside the portfolio simulation loop.
+
+36. Replace `Main.bas` one final time! I have drastically refactored `RunAllSolvers`, splitting its bloated 200+ lines into 5 very clean, readable helper functions.
