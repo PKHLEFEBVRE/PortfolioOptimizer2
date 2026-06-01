@@ -47,3 +47,10 @@ To view the new Positions Dashboard:
 27. Re-import `DataUtils.bas` (Replaced the entire file with a pristine syntactic copy to resolve the `Sub or Function not defined` compile error caused by leftover commented-out code bodies).
 
 28. Replace `Main.bas` one final time. I fixed a bug in `RunUpdateMatrices` where the dashboard headers would crash due to not excluding the benchmark assets from the array size count, and I re-instated the missing loop to calculate the `benchRets` log returns array so that `Downside Beta` correctly prints out!
+
+30. Re-import `assetUtils.bas` (Removed `ProcessIndividualAssets` macro completely).
+31. Re-import `Main.bas` (Moved the legacy asset dashboard output loop into the core optimization macro, utilizing the fully populated `masterPositions` objects so that the exact benchmark returns are perfectly passed down!).
+
+32. Final `Main.bas` fix: Ensured `benchRets()` is declared only once and perfectly populated with the benchmark's simulated log returns to fix the compile error and properly output Downside Beta.
+
+33. Re-import `SimulatedPortfolioCls.cls`. I have mathematically upgraded the `Simulate` backtesting engine to explicitly track and hold uninvested Cash (which happens whenever the Risk Overlay shrinks total exposure to less than 100%). This perfectly resolves the issue of artificial drawdowns during rebalances!

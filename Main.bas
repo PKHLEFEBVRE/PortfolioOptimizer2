@@ -60,7 +60,6 @@ Sub RunUpdateMatrices()
 
     Dim logRets() As Double, meanRets() As Double
     Call CalculateHistoricalStats(dates, fundPrices, logRets, meanRets)
-    Call ProcessIndividualAssets(fundPrices, dates, logRets, fundAssetNames)
 
     'MsgBox "Data Updated. Matrices Built.", vbInformation
     Application.ScreenUpdating = True
@@ -253,22 +252,62 @@ Sub RunAllSolvers()
     ' Extract benchRets to pass into ComputeMetrics for Downside Beta
     Dim benchCurve() As Double
     benchCurve = benchPort.EquityCurve
+    Dim benchRets() As Double
     ReDim benchRets(1 To UBound(dates) - 1)
     Dim bIdx As Long
+    For bIdx = 1 To UBound(dates) - 1
+        If benchCurve(bIdx, 1) > 0 And benchCurve(bIdx + 1, 1) > 0 Then
+            benchRets(bIdx) = Log(benchCurve(bIdx + 1, 1) / benchCurve(bIdx, 1))
+        Else
+            benchRets(bIdx) = 0
+        End If
+    Next bIdx
 
     benchPort.ComputeMetrics rf, conf, benchRets
     masterPortfolios.Add "BENCHMARK", benchPort
 
-    ' Now build an aligned return array strictly matching the length of the portfolio dates (which matches logRets length)
-    Dim benchRets() As Double
-    ' logRets are size (1 to UBound(dates) - 1)
-    ReDim benchRets(1 To UBound(dates) - 1)
-
 
     ' Inject benchRets back into positions
     Dim pKey As Variant
+    Dim rIdx As Integer
+    rIdx = 0
     For Each pKey In masterPositions.Keys
         masterPositions(pKey).ComputeMetrics rf, conf, benchRets
+
+        ' Output to legacy Dashboard Asset Metrics Table
+        Dim curPos As PositionCls
+        Set curPos = masterPositions(pKey)
+        Dim dummyW As Variant
+        Call OutputMetricsToRow(rIdx, curPos.AssetName, curPos.Metrics.Ret, curPos.Metrics.Vol, curPos.Metrics.Sharpe, curPos.Metrics.MDD, curPos.Metrics.MDDLen, curPos.Metrics.VaR, dummyW, "AssetMetricsStart", False)
+
+        ' Also explicitly write the Downside Beta back to the sheet to ensure it is visible!
+        Dim wsDashLegacy As Worksheet
+        Set wsDashLegacy = Sheets(DASH_SHEET)
+        Dim aRow As Long, aCol As Long
+        aRow = wsDashLegacy.Range("AssetMetricsStart").Row + 1 + rIdx
+        aCol = wsDashLegacy.Range("AssetMetricsStart").Column
+
+        ' Note: Downside Beta is typically the 8th column in the old table, but just in case, we append it
+        ' OutputMetricsToRow prints to StartCol + 1 through + 6.
+        ' Let's print Downside Beta to StartCol + 7 (which usually represents CVaR or DSBeta depending on dashboard format)
+        wsDashLegacy.Cells(aRow, aCol + 7).Value = curPos.Metrics.DownsideBeta
+
+        ' And output the asset's Equity Curve to the CHART_SHEET (previously handled by ProcessIndividualAssets)
+        Dim wsChart As Worksheet
+        Set wsChart = Sheets(CHART_SHEET)
+        Dim pArr() As Double
+        pArr = curPos.Prices
+        Dim curve() As Double
+        Dim nDays As Long
+        nDays = UBound(pArr)
+        ReDim curve(1 To nDays, 1 To 1)
+        Dim iDay As Long
+        For iDay = 1 To nDays
+            curve(iDay, 1) = (pArr(iDay) / pArr(1)) * 100
+        Next iDay
+        wsChart.Range(wsChart.Cells(2, 2 + rIdx), wsChart.Cells(2 + nDays - 1, 2 + rIdx)).Value = curve
+
+        rIdx = rIdx + 1
     Next pKey
 
 

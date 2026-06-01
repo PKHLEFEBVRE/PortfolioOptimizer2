@@ -261,49 +261,7 @@ Sub SyncSimWeightsHeaders(dates() As Date, assetNames() As String, strategies As
     Next i
 End Sub
 
-Sub ProcessIndividualAssets(prices As Variant, dates As Variant, logRets As Variant, assetNames() As String)
-    Dim nDays As Long, nAssets As Long
-    Dim i As Long, j As Long
-    nDays = UBound(prices, 1)
-    nAssets = UBound(prices, 2)
-    Dim wsChart As Worksheet
-    Set wsChart = Sheets(CHART_SHEET)
 
-    Dim rf As Double
-    rf = Sheets(DASH_SHEET).Range("D" & RISK_FREE_ROW).Value
-    Dim conf As Double
-    conf = Sheets(DASH_SHEET).Range("D5").Value
-
-    For j = 1 To nAssets
-        Dim pPrices() As Double, pDates() As Date
-        ReDim pPrices(1 To nDays)
-        ReDim pDates(1 To nDays)
-
-        Dim curve() As Double
-        ReDim curve(1 To nDays, 1 To 1)
-        Dim startP As Double
-        startP = prices(1, j)
-
-        For i = 1 To nDays
-            curve(i, 1) = (prices(i, j) / startP) * 100
-            pPrices(i) = prices(i, j)
-            pDates(i) = dates(i)
-        Next i
-
-        wsChart.Range(wsChart.Cells(2, 1 + j), wsChart.Cells(2 + nDays - 1, 1 + j)).Value = curve
-
-        Dim pos As PositionCls
-        Set pos = New PositionCls
-        pos.AssetName = assetNames(j)
-        pos.InitializeData pPrices, pDates
-
-        ' Compute metrics via class
-        pos.ComputeMetrics rf, conf
-
-        Dim dummyW As Variant
-        Call OutputMetricsToRow(j - 1, assetNames(j), pos.Metrics.Ret, pos.Metrics.Vol, pos.Metrics.Sharpe, pos.Metrics.MDD, pos.Metrics.MDDLen, pos.Metrics.VaR, dummyW, "AssetMetricsStart", False)
-    Next j
-End Sub
 
 Sub SyncDashboardHeaders(dates() As Date, assetNames() As String, strategies As Variant)
     Dim wsDash As Worksheet

@@ -125,6 +125,9 @@ Public Sub Simulate()
     Dim prices() As Double
     ReDim prices(1 To nDays, 1 To nAssets)
 
+    Dim sumW As Double
+    sumW = 0
+
     For j = 1 To nAssets
         Dim pos As PositionCls
         Set pos = p_Positions(keys(j - 1))
@@ -141,10 +144,14 @@ Public Sub Simulate()
 
         Dim w As Double
         w = p_Weights(keys(j - 1))
+        sumW = sumW + w
 
         shares(j) = (currentVal * w) / prices(1, j)
         p_DailyWeights(1, j) = w
     Next j
+
+    Dim cash As Double
+    cash = currentVal * (1 - sumW)
 
     Dim peak As Double
     peak = 100
@@ -159,13 +166,14 @@ Public Sub Simulate()
         prevTotal = p_EquityCurve(i - 1, 1)
 
         Dim assetVal As Double
-        assetVal = 0
+        assetVal = cash ' Start with the cash balance
         For j = 1 To nAssets
             assetVal = assetVal + shares(j) * prices(i, j)
         Next j
 
         ' Rebalance monthly AFTER calculating the day's total value
         If Month(dCurr) <> Month(dPrev) Then
+            cash = assetVal * (1 - sumW)
             For j = 1 To nAssets
                 w = p_Weights(keys(j - 1))
                 shares(j) = (assetVal * w) / prices(i, j)
