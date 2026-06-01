@@ -87,6 +87,27 @@ Public Function GetWeight(ByVal assetName As String) As Double
     End If
 End Function
 
+Public Function GetPositionNames() As Variant()
+    Dim keysArray() As Variant
+    Dim n As Long
+    n = p_Positions.Count
+    If n = 0 Then
+        GetPositionNames = Array()
+        Exit Function
+    End If
+
+    ReDim keysArray(1 To n)
+    Dim k As Variant
+    Dim i As Long
+    i = 1
+    For Each k In p_Positions.Keys
+        keysArray(i) = k
+        i = i + 1
+    Next k
+
+    GetPositionNames = keysArray
+End Function
+
 Public Sub ApplyRiskOverlay(ByVal multiplier As Double)
     Dim key As Variant
     For Each key In p_Weights.Keys

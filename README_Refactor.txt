@@ -65,3 +65,10 @@ To view the new Positions Dashboard:
 38. Re-import `assetUtils.bas` (Cleaned up the legacy array-based stats and covariance methods since they are completely handled by OOP principles now).
 
 39. Replace `Main.bas` one final time. I fixed a compiler error caused by the `CalculateStatsFromObjects` and `CalculateCovarianceFromObjects` subroutines being accidentally duplicated during the previous refactor step.
+
+40. Re-import `OptimizerCls.cls`.
+41. Re-import `SimulatedPortfolioCls.cls`.
+42. Re-import `PositionDashboard.bas`.
+All procedural arrays have been eradicated from the optimization process! `OptimizerCls` and `PositionDashboard` now extract keys directly from the newly created `GetPositionNames()` method on `SimulatedPortfolioCls`.
+
+43. Re-import `Main.bas` (Fixed the `GetDictKeys` macro compile error and cleaned up the `Argument Not Optional` signature mismatches that accidentally broke the helpers when removing `fundAssetNames`).

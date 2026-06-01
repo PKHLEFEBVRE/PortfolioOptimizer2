@@ -31,45 +31,16 @@ Sub RunUpdateMatrices()
     Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
     If UBound(prices, 2) < 1 Then Exit Sub
 
-    ' Extract fund assets (skip benchmarks in first 2 columns)
-    Dim nTotal As Integer
-    nTotal = UBound(assetNames)
-    Dim nAssets As Integer
-    nAssets = nTotal - 2
-
-    Dim fundPrices() As Double, fundAssetNames() As String
-    ReDim fundPrices(1 To UBound(prices, 1), 1 To nAssets)
-    ReDim fundAssetNames(1 To nAssets)
-
-    Dim d As Long, j As Integer
-    For d = 1 To UBound(prices, 1)
-        For j = 1 To nAssets
-            fundPrices(d, j) = prices(d, j + 2)
-        Next j
-    Next d
-    For j = 1 To nAssets
-        fundAssetNames(j) = assetNames(j + 2)
-    Next j
-
-    Dim strategies As Variant
-    strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN") ', "MIN VAR", "KELLY"
-
-    Call SyncDashboardHeaders(dates, fundAssetNames, strategies)
-    Call UpdateConvictions
-    Call UpdateCurrentPrices(fundPrices)
-
-    ' Cache objects temporarily just to update the dashboard values
     Dim rf As Double, conf As Double
     rf = Sheets(DASH_SHEET).Range("D4").Value
     conf = Sheets(DASH_SHEET).Range("D5").Value
 
     Dim masterPositions As Object
-    Set masterPositions = CacheMasterPositions(fundPrices, fundAssetNames, dates, rf, conf)
+    Set masterPositions = CacheMasterPositions(prices, assetNames, dates, rf, conf)
 
     Dim meanRets() As Double, expReturns() As Double
-    Call CalculateStatsFromObjects(masterPositions, fundAssetNames, dates(UBound(dates)), meanRets, expReturns)
+    Call CalculateStatsFromObjects(masterPositions, dates(UBound(dates)), meanRets, expReturns)
 
-    ' MsgBox "Data Updated. Matrices Built.", vbInformation
     Application.ScreenUpdating = True
 End Sub
 
@@ -85,61 +56,53 @@ Sub RunAllSolvers()
     Dim prices() As Variant, dates() As Date, assetNames() As String
     Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
 
-    ' 2. Split data into Benchmark vs Fund
-    Dim fundPrices() As Double, fundAssetNames() As String
-    Dim benchPricesRaw() As Double, benchAssetNames() As String
-    Call SplitBenchmarkAndFundAssets(prices, assetNames, fundPrices, fundAssetNames, benchPricesRaw, benchAssetNames)
-
-    Dim nAssets As Integer
-    nAssets = UBound(fundAssetNames)
-
     Dim lastDate As Date
     lastDate = dates(UBound(dates))
 
-    ' 3. Cache OOP objects FIRST
+    ' 2. Cache OOP objects FIRST (Extracts directly from raw prices)
     Dim masterPositions As Object
-    Set masterPositions = CacheMasterPositions(fundPrices, fundAssetNames, dates, rf, conf)
+    Set masterPositions = CacheMasterPositions(prices, assetNames, dates, rf, conf)
 
-    ' 4. Compute stats dynamically using the PositionCls objects
+    ' 3. Compute stats dynamically using the PositionCls objects
     Dim meanRets() As Double
     Dim expReturns() As Double
-    Call CalculateStatsFromObjects(masterPositions, fundAssetNames, lastDate, meanRets, expReturns)
+    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets, expReturns)
 
     Dim covMat() As Double
-    covMat = CalculateCovarianceFromObjects(masterPositions, fundAssetNames, meanRets)
-    Call OutputCorrelationMatrix(covMat, fundAssetNames)
+    covMat = CalculateCovarianceFromObjects(masterPositions, meanRets)
+    Call OutputCorrelationMatrix(covMat, GetDictKeys(masterPositions))
 
-    ' 5. Prep legacy Engine constraints
+    ' 4. Prep legacy Engine constraints
     Dim strategies As Variant
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN")
 
     Dim minWeights() As Double, maxWeights() As Double
-    Call PrepEngineSheetAndConstraints(fundAssetNames, expReturns, covMat, minWeights, maxWeights)
-    Call SyncSimWeightsHeaders(dates, fundAssetNames, strategies)
+    Call PrepEngineSheetAndConstraints(masterPositions, expReturns, covMat, minWeights, maxWeights)
+    Call SyncSimWeightsHeaders(dates, GetDictKeys(masterPositions), strategies)
 
     Dim masterPortfolios As Object
     Set masterPortfolios = CreateObject("Scripting.Dictionary")
 
-    ' 6. Build and simulate Benchmark
+    ' 5. Build and simulate Benchmark
     Dim benchPort As SimulatedPortfolioCls
     Dim benchRets() As Double
-    Set benchPort = BuildBenchmarkPortfolio(benchPricesRaw, benchAssetNames, dates, rf, conf, benchRets)
+    Set benchPort = BuildBenchmarkPortfolio(prices, assetNames, dates, rf, conf, benchRets)
     masterPortfolios.Add "BENCHMARK", benchPort
 
-    ' 7. Inject benchRets into Fund Positions
+    ' 6. Inject benchRets into Fund Positions
     Dim pKey As Variant
     For Each pKey In masterPositions.Keys
         masterPositions(pKey).ComputeMetrics rf, conf, benchRets
     Next pKey
 
-    ' 8. Optimize and Simulate Active Strategies
-    Call OptimizeAndSimulateStrategies(strategies, minWeights, maxWeights, nAssets, fundAssetNames, masterPositions, masterPortfolios, rf, conf, benchRets)
+    ' 7. Optimize and Simulate Active Strategies
+    Call OptimizeAndSimulateStrategies(strategies, minWeights, maxWeights, masterPositions, masterPortfolios, rf, conf, benchRets)
 
-    ' 9. Output to Dashboards
-    Call OutputLegacyDashboard(masterPositions, masterPortfolios, strategies, nAssets, fundAssetNames, lastDate)
+    ' 8. Output to Dashboards
+    Call OutputLegacyDashboard(masterPositions, masterPortfolios, strategies, lastDate)
 
     Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
-    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios, fundAssetNames)
+    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios)
 
     Sheets(ENGINE_SHEET).Visible = False
     Sheets(DASH_SHEET).Activate
@@ -151,19 +114,126 @@ End Sub
 
 ' -------------------------------------------------------------------------
 ' REFACTOR HELPERS
+' -------------------------------------------------------------------------
 
-Private Sub CalculateStatsFromObjects(masterPositions As Object, fundAssetNames() As String, lastDate As Date, ByRef meanRets() As Double, ByRef expReturns() As Double)
+Private Function GetDictKeys(dict As Object) As String()
+    Dim keysArray() As String
+    ReDim keysArray(1 To dict.Count)
+    Dim i As Long
+    i = 1
+    Dim k As Variant
+    For Each k In dict.Keys
+        keysArray(i) = CStr(k)
+        i = i + 1
+    Next k
+    GetDictKeys = keysArray
+End Function
+
+Private Function CacheMasterPositions(prices() As Variant, assetNames() As String, dates() As Date, rf As Double, conf As Double) As Object
+    Dim masterPositions As Object
+    Set masterPositions = CreateObject("Scripting.Dictionary")
+
+    Dim convictions As Object
+    Set convictions = convictionsUtils.getConvictions()
+
+    Dim nTotal As Integer
+    nTotal = UBound(assetNames)
+    Dim cacheIdx As Integer
+
+    ' Fund assets start at index 3 (skipping the 2 benchmarks)
+    For cacheIdx = 3 To nTotal
+        Dim pPrices() As Double, pDates() As Date
+        ReDim pPrices(1 To UBound(prices, 1))
+        ReDim pDates(1 To UBound(dates))
+        Dim iDay As Long
+        For iDay = 1 To UBound(prices, 1)
+            pPrices(iDay) = CDbl(prices(iDay, cacheIdx))
+            pDates(iDay) = dates(iDay)
+        Next iDay
+
+        Dim cachePos As PositionCls
+        Set cachePos = New PositionCls
+        cachePos.AssetName = assetNames(cacheIdx)
+        cachePos.InitializeData pPrices, pDates
+        cachePos.ComputeMetrics rf, conf
+
+        If convictions.Exists(cachePos.AssetName) Then
+            Dim cDict As Object
+            Set cDict = convictions(cachePos.AssetName)
+            On Error Resume Next
+            cachePos.Conviction = cDict("conviction")
+            cachePos.TP = cDict("TP")
+            cachePos.TPProba = cDict("TP proba")
+            cachePos.SP = cDict("SP")
+            cachePos.SPProba = cDict("SP proba")
+            On Error GoTo 0
+        End If
+
+        masterPositions.Add assetNames(cacheIdx), cachePos
+    Next cacheIdx
+
+    Set CacheMasterPositions = masterPositions
+End Function
+
+Private Function BuildBenchmarkPortfolio(prices() As Variant, assetNames() As String, dates() As Date, rf As Double, conf As Double, ByRef benchRets() As Double) As SimulatedPortfolioCls
+    Dim benchPort As SimulatedPortfolioCls
+    Set benchPort = New SimulatedPortfolioCls
+    benchPort.StrategyName = "BENCHMARK"
+
+    Dim cacheIdx As Integer
+    ' Benchmark assets are at index 1 and 2
+    For cacheIdx = 1 To 2
+        Dim pPrices() As Double, pDates() As Date
+        ReDim pPrices(1 To UBound(prices, 1))
+        ReDim pDates(1 To UBound(dates))
+        Dim iDay As Long
+        For iDay = 1 To UBound(prices, 1)
+            pPrices(iDay) = CDbl(prices(iDay, cacheIdx))
+            pDates(iDay) = dates(iDay)
+        Next iDay
+
+        Dim bPos As PositionCls
+        Set bPos = New PositionCls
+        bPos.AssetName = assetNames(cacheIdx)
+        bPos.InitializeData pPrices, pDates
+        bPos.ComputeMetrics rf, conf
+
+        benchPort.AddPosition assetNames(cacheIdx), bPos
+    Next cacheIdx
+
+    benchPort.SetEqualWeights
+    benchPort.Simulate
+
+    Dim benchCurve() As Double
+    benchCurve = benchPort.EquityCurve
+    ReDim benchRets(1 To UBound(dates) - 1)
+
+    Dim bIdx As Long
+    For bIdx = 1 To UBound(dates) - 1
+        If benchCurve(bIdx, 1) > 0 And benchCurve(bIdx + 1, 1) > 0 Then
+            benchRets(bIdx) = Log(benchCurve(bIdx + 1, 1) / benchCurve(bIdx, 1))
+        Else
+            benchRets(bIdx) = 0
+        End If
+    Next bIdx
+
+    benchPort.ComputeMetrics rf, conf, benchRets
+    Set BuildBenchmarkPortfolio = benchPort
+End Function
+
+Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Date, ByRef meanRets() As Double, ByRef expReturns() As Double)
     Dim nAssets As Integer
-    nAssets = UBound(fundAssetNames)
+    nAssets = masterPositions.Count
     ReDim meanRets(1 To nAssets)
     ReDim expReturns(1 To nAssets)
 
     Dim i As Integer
-    For i = 1 To nAssets
+    i = 1
+    Dim pKey As Variant
+    For Each pKey In masterPositions.Keys
         Dim pos As PositionCls
-        Set pos = masterPositions(fundAssetNames(i))
+        Set pos = masterPositions(pKey)
 
-        ' Compute mean log return
         Dim lRets() As Double
         lRets = pos.LogReturns
         Dim nRets As Long
@@ -183,23 +253,27 @@ Private Sub CalculateStatsFromObjects(masterPositions As Object, fundAssetNames(
         Else
             meanRets(i) = 0
         End If
-    Next i
+        i = i + 1
+    Next pKey
 
-    ' Compute Expected Returns leveraging the helper in assetUtils
     expReturns = assetUtils.CalculateExpectedReturns(meanRets, lastDate)
 
-    ' Assign Expected Returns back to the PositionCls objects
-    For i = 1 To nAssets
-        masterPositions(fundAssetNames(i)).ExpectedReturn = expReturns(i)
-    Next i
+    i = 1
+    For Each pKey In masterPositions.Keys
+        masterPositions(pKey).ExpectedReturn = expReturns(i)
+        i = i + 1
+    Next pKey
 End Sub
 
-Private Function CalculateCovarianceFromObjects(masterPositions As Object, fundAssetNames() As String, meanRets() As Double) As Double()
+Private Function CalculateCovarianceFromObjects(masterPositions As Object, meanRets() As Double) As Double()
     Dim nAssets As Integer
-    nAssets = UBound(fundAssetNames)
+    nAssets = masterPositions.Count
+
+    Dim keysArray() As String
+    keysArray = GetDictKeys(masterPositions)
 
     Dim firstPos As PositionCls
-    Set firstPos = masterPositions(fundAssetNames(1))
+    Set firstPos = masterPositions(keysArray(1))
     Dim nRets As Long
     nRets = UBound(firstPos.LogReturns)
 
@@ -209,7 +283,7 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, fundA
     Dim j As Integer, k As Integer, i As Long
     For j = 1 To nAssets
         Dim posJ As PositionCls
-        Set posJ = masterPositions(fundAssetNames(j))
+        Set posJ = masterPositions(keysArray(j))
         Dim lRetsJ() As Double
         lRetsJ = posJ.LogReturns
         Dim meanJ As Double
@@ -217,7 +291,7 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, fundA
 
         For k = 1 To nAssets
             Dim posK As PositionCls
-            Set posK = masterPositions(fundAssetNames(k))
+            Set posK = masterPositions(keysArray(k))
             Dim lRetsK() As Double
             lRetsK = posK.LogReturns
             Dim meanK As Double
@@ -239,45 +313,14 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, fundA
     CalculateCovarianceFromObjects = res
 End Function
 
-' -------------------------------------------------------------------------
-
-Private Sub SplitBenchmarkAndFundAssets(prices() As Variant, assetNames() As String, ByRef fundPrices() As Double, ByRef fundAssetNames() As String, ByRef benchPricesRaw() As Double, ByRef benchAssetNames() As String)
-    Dim nTotal As Integer
-    nTotal = UBound(assetNames)
-    Dim nAssets As Integer
-    nAssets = nTotal - 2
-
-    ReDim fundPrices(1 To UBound(prices, 1), 1 To nAssets)
-    ReDim fundAssetNames(1 To nAssets)
-
-    ReDim benchPricesRaw(1 To UBound(prices, 1), 1 To 2)
-    ReDim benchAssetNames(1 To 2)
-
-    Dim d As Long, j As Integer
-    For d = 1 To UBound(prices, 1)
-        For j = 1 To 2
-            benchPricesRaw(d, j) = prices(d, j)
-        Next j
-        For j = 1 To nAssets
-            fundPrices(d, j) = prices(d, j + 2)
-        Next j
-    Next d
-    For j = 1 To 2
-        benchAssetNames(j) = assetNames(j)
-    Next j
-    For j = 1 To nAssets
-        fundAssetNames(j) = assetNames(j + 2)
-    Next j
-End Sub
-
-Private Sub PrepEngineSheetAndConstraints(fundAssetNames() As String, expReturns() As Double, covMat() As Double, ByRef minWeights() As Double, ByRef maxWeights() As Double)
+Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, expReturns() As Double, covMat() As Double, ByRef minWeights() As Double, ByRef maxWeights() As Double)
     Dim wsDash As Worksheet
     Set wsDash = Sheets(DASH_SHEET)
     Dim inputStart As Long
     inputStart = wsDash.Range("InputTableStart").Row + 1
 
     Dim k As Integer, nAssets As Integer
-    nAssets = UBound(fundAssetNames)
+    nAssets = masterPositions.Count
 
     For k = 1 To nAssets
         wsDash.Cells(inputStart + k - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value = expReturns(k)
@@ -302,102 +345,12 @@ Private Sub PrepEngineSheetAndConstraints(fundAssetNames() As String, expReturns
     Next k
 End Sub
 
-Private Function CacheMasterPositions(fundPrices() As Double, fundAssetNames() As String, dates() As Date, rf As Double, conf As Double) As Object
-    Dim masterPositions As Object
-    Set masterPositions = CreateObject("Scripting.Dictionary")
-
-    Dim convictions As Object
-    Set convictions = convictionsUtils.getConvictions()
-
-    Dim nAssets As Integer
-    nAssets = UBound(fundAssetNames)
-    Dim cacheIdx As Integer
-
-    For cacheIdx = 1 To nAssets
-        Dim pPrices() As Double, pDates() As Date
-        ReDim pPrices(1 To UBound(fundPrices, 1))
-        ReDim pDates(1 To UBound(dates))
-        Dim iDay As Long
-        For iDay = 1 To UBound(fundPrices, 1)
-            pPrices(iDay) = fundPrices(iDay, cacheIdx)
-            pDates(iDay) = dates(iDay)
-        Next iDay
-
-        Dim cachePos As PositionCls
-        Set cachePos = New PositionCls
-        cachePos.AssetName = fundAssetNames(cacheIdx)
-        cachePos.InitializeData pPrices, pDates
-        cachePos.ComputeMetrics rf, conf
-
-        If convictions.Exists(cachePos.AssetName) Then
-            Dim cDict As Object
-            Set cDict = convictions(cachePos.AssetName)
-            On Error Resume Next
-            cachePos.Conviction = cDict("conviction")
-            cachePos.TP = cDict("TP")
-            cachePos.TPProba = cDict("TP proba")
-            cachePos.SP = cDict("SP")
-            cachePos.SPProba = cDict("SP proba")
-            On Error GoTo 0
-        End If
-        masterPositions.Add fundAssetNames(cacheIdx), cachePos
-    Next cacheIdx
-
-    Set CacheMasterPositions = masterPositions
-End Function
-
-Private Function BuildBenchmarkPortfolio(benchPricesRaw() As Double, benchAssetNames() As String, dates() As Date, rf As Double, conf As Double, ByRef benchRets() As Double) As SimulatedPortfolioCls
-    Dim benchPort As SimulatedPortfolioCls
-    Set benchPort = New SimulatedPortfolioCls
-    benchPort.StrategyName = "BENCHMARK"
-
-    Dim benchMasterPos As Object
-    Set benchMasterPos = CreateObject("Scripting.Dictionary")
-
-    Dim cacheIdx As Integer
-    For cacheIdx = 1 To 2
-        Dim pPrices() As Double, pDates() As Date
-        ReDim pPrices(1 To UBound(benchPricesRaw, 1))
-        ReDim pDates(1 To UBound(dates))
-        Dim iDay As Long
-        For iDay = 1 To UBound(benchPricesRaw, 1)
-            pPrices(iDay) = benchPricesRaw(iDay, cacheIdx)
-            pDates(iDay) = dates(iDay)
-        Next iDay
-
-        Dim bPos As PositionCls
-        Set bPos = New PositionCls
-        bPos.AssetName = benchAssetNames(cacheIdx)
-        bPos.InitializeData pPrices, pDates
-        bPos.ComputeMetrics rf, conf
-
-        benchMasterPos.Add benchAssetNames(cacheIdx), bPos
-        benchPort.AddPosition benchAssetNames(cacheIdx), bPos
-    Next cacheIdx
-
-    benchPort.SetEqualWeights
-    benchPort.Simulate
-
-    Dim benchCurve() As Double
-    benchCurve = benchPort.EquityCurve
-    ReDim benchRets(1 To UBound(dates) - 1)
-
-    Dim bIdx As Long
-    For bIdx = 1 To UBound(dates) - 1
-        If benchCurve(bIdx, 1) > 0 And benchCurve(bIdx + 1, 1) > 0 Then
-            benchRets(bIdx) = Log(benchCurve(bIdx + 1, 1) / benchCurve(bIdx, 1))
-        Else
-            benchRets(bIdx) = 0
-        End If
-    Next bIdx
-
-    benchPort.ComputeMetrics rf, conf, benchRets
-    Set BuildBenchmarkPortfolio = benchPort
-End Function
-
-Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As Double, maxWeights() As Double, nAssets As Integer, fundAssetNames() As String, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchRets() As Double)
+Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As Double, maxWeights() As Double, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchRets() As Double)
     Dim optimizer As OptimizerCls
     Set optimizer = New OptimizerCls
+
+    Dim nAssets As Integer
+    nAssets = masterPositions.Count
 
     Dim sumWeights() As Double
     ReDim sumWeights(1 To nAssets)
@@ -405,6 +358,9 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
     For m = 1 To nAssets
         sumWeights(m) = 0
     Next m
+
+    Dim keysArray() As String
+    keysArray = GetDictKeys(masterPositions)
 
     Dim i As Integer
     For i = LBound(strategies) To UBound(strategies)
@@ -414,11 +370,11 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
 
         Dim jPos As Integer
         For jPos = 1 To nAssets
-            simPort.AddPosition fundAssetNames(jPos), masterPositions(fundAssetNames(jPos))
+            simPort.AddPosition keysArray(jPos), masterPositions(keysArray(jPos))
         Next jPos
 
         simPort.SetEqualWeights
-        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, fundAssetNames
+        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights
 
         simPort.Simulate
         simPort.ComputeMetrics rf, conf, benchRets
@@ -443,10 +399,15 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
     Next pKey
 End Sub
 
-Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As Object, strategies As Variant, nAssets As Integer, fundAssetNames() As String, lastDate As Date)
+Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As Object, strategies As Variant, lastDate As Date)
     Dim pKey As Variant
     Dim rIdx As Integer
     rIdx = 0
+
+    Dim nAssets As Integer
+    nAssets = masterPositions.Count
+    Dim keysArray() As String
+    keysArray = GetDictKeys(masterPositions)
 
     Dim wsChart As Worksheet
     Set wsChart = Sheets(CHART_SHEET)
@@ -455,7 +416,7 @@ Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As
     Set wsDashLegacy = Sheets(DASH_SHEET)
 
     ' Output Positions
-    For Each pKey In masterPositions.Keys
+    For Each pKey In keysArray
         Dim curPos As PositionCls
         Set curPos = masterPositions(pKey)
         Dim dummyW As Variant
@@ -492,7 +453,7 @@ Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As
         ReDim wArr(1 To 1, 1 To nAssets)
         Dim idx As Integer
         For idx = 1 To nAssets
-            wArr(1, idx) = simPort.GetWeight(fundAssetNames(idx))
+            wArr(1, idx) = simPort.GetWeight(keysArray(idx))
         Next idx
 
         Call portfolioUtils.OutputMetricsToRow(i - 1, simPort.StrategyName, simPort.Metrics.Ret, simPort.Metrics.Vol, simPort.Metrics.Sharpe, simPort.Metrics.MDD, simPort.Metrics.MDDLen, simPort.Metrics.VaR, wArr, "StrategyTableStart", True)
@@ -531,35 +492,4 @@ Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As
     Next i
 
     Call chartsUtils.UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
-End Sub
-
-
-' ==========================================================
-' CLEAN
-' ==========================================================
-
-Sub RunClean()
-    Dim wsDash As Worksheet
-    Set wsDash = Sheets(DASH_SHEET)
-
-    Dim stratR As Long, stratC As Long
-    stratR = wsDash.Range("StrategyTableStart").Row + 1
-    stratC = wsDash.Range("StrategyTableStart").Column
-    wsDash.Range(wsDash.Cells(stratR, stratC), wsDash.Cells(stratR + 5, stratC + 100)).ClearContents
-
-    Dim inputR As Long, inputC As Long
-    inputR = wsDash.Range("InputTableStart").Row + 1
-    inputC = wsDash.Range("InputTableStart").Column
-    wsDash.Range(wsDash.Cells(inputR, inputC - 1), wsDash.Cells(stratR - 3, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
-    'wsDash.Range(wsDash.Cells(inputR, inputC + 2), wsDash.Cells(stratR - 3, inputC + 2)).ClearContents
-    'wsDash.Range(wsDash.Cells(inputR, wsDash.Range("AssetMetricsStart").Column - 1), wsDash.Cells(stratR - 2, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
-
-    Dim corrR As Long
-    corrR = wsDash.Range("CorrMatrixStart").Row + 1
-    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("CorrMatrixStart").Column), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column + 50)).ClearContents
-    corrR = wsDash.Range("StrategyWeightsStart").Row + 1
-    wsDash.Range(wsDash.Cells(corrR - 1, wsDash.Range("StrategyWeightsStart").Column + 1), wsDash.Cells(corrR - 1, wsDash.Range("CorrMatrixStart").Column)).ClearContents
-    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("StrategyWeightsStart").Column - 1), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column - 2)).ClearContents
-    Sheets(CHART_SHEET).Cells.ClearContents
-    Sheets(WEIGHTS_SHEET).Cells.ClearContents
 End Sub

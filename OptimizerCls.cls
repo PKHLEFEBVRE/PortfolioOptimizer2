@@ -14,7 +14,7 @@ Private Const ENGINE_SHEET As String = "Engine"
 
 ' Optimizes the weights in the provided portfolio based on its StrategyName.
 ' It modifies the portfolio's weights in place.
-Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWeights() As Double, ByRef sumWeights() As Double, nAssets As Integer, assetNames() As String)
+Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWeights() As Double, ByRef sumWeights() As Double)
     Dim wsDash As Worksheet, wsEng As Worksheet
     Dim optRange As Range, optRangeC As Range
     Set wsDash = Sheets(DASH_SHEET)
@@ -32,6 +32,16 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
     Dim m As Integer, j As Integer
     Dim wCount As Integer
     wCount = 4 ' Hardcoded count of active optimization strategies contributing to MEAN. In original, UBound(strategies) - 1
+
+    ' Retrieve the asset names dynamically from the portfolio
+    Dim nAssets As Integer
+    Dim posKeys() As Variant
+
+    ' Notice that the portfolio object must expose its positions keys to know which assets to optimize
+    ' Wait, SimulatedPortfolioCls does not currently expose a GetPositionsKeys method.
+    ' We will add one. For now, we assume it exists as `port.GetPositionNames()`
+    posKeys = port.GetPositionNames()
+    nAssets = UBound(posKeys)
 
     ' Always start the engine sheet with equal weights for the solver
     Dim eqW As Double
@@ -56,7 +66,7 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
 
         For m = 1 To nAssets
             cVal = convictions(m) / sum_
-            port.SetWeight assetNames(m), cVal
+            port.SetWeight CStr(posKeys(m)), cVal
         Next m
 
     ElseIf stratName = "ER/VOL" Then
@@ -71,13 +81,13 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
 
         If currentSum <> 0 Then
             For m = 1 To nAssets
-                port.SetWeight assetNames(m), optRange.Cells(1, m).Value / currentSum
+                port.SetWeight CStr(posKeys(m)), optRange.Cells(1, m).Value / currentSum
             Next m
         End If
 
     ElseIf stratName = "MEAN" Then
         For m = 1 To nAssets
-            port.SetWeight assetNames(m), sumWeights(m) / wCount
+            port.SetWeight CStr(posKeys(m)), sumWeights(m) / wCount
         Next m
 
     Else
@@ -88,14 +98,14 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
         w = wsEng.Range("OptWeights").Value
 
         For m = 1 To nAssets
-            port.SetWeight assetNames(m), CDbl(w(1, m))
+            port.SetWeight CStr(posKeys(m)), CDbl(w(1, m))
         Next m
     End If
 
     ' Update the running sumWeights array for the MEAN strategy computation
     If stratName <> "MEAN" Then
         For m = 1 To nAssets
-            sumWeights(m) = sumWeights(m) + port.GetWeight(assetNames(m))
+            sumWeights(m) = sumWeights(m) + port.GetWeight(CStr(posKeys(m)))
         Next m
     End If
 End Sub

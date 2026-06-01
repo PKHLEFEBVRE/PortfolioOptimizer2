@@ -89,7 +89,7 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
     wsDash.Columns.AutoFit
 End Sub
 
-Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object, assetNames() As String)
+Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object)
     Dim wsDash As Worksheet
     Dim sheetName As String
     sheetName = "Positions Dashboard"
@@ -101,6 +101,17 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object, assetNames() As
     If wsDash Is Nothing Then Exit Sub ' Should have been created by GeneratePositionsDashboard
     If portfoliosDict.Count = 0 Then Exit Sub
 
+    ' Extract asset names dynamically from the "MEAN" portfolio, which contains all fund assets
+    Dim meanPort As SimulatedPortfolioCls
+    If Not portfoliosDict.Exists("MEAN") Then Exit Sub
+    Set meanPort = portfoliosDict("MEAN")
+
+    Dim posKeys() As Variant
+    posKeys = meanPort.GetPositionNames()
+
+    Dim nAssets As Long
+    nAssets = UBound(posKeys)
+
     ' Find the last row of the Positions table
     Dim lastRow As Long
     lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
@@ -109,9 +120,6 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object, assetNames() As
     startRow = lastRow + 3 ' Leave a gap
 
     ' Build Headers
-    Dim nAssets As Long
-    nAssets = UBound(assetNames) - LBound(assetNames) + 1
-
     Dim headers() As Variant
     ReDim headers(1 To 10 + nAssets)
 
@@ -128,7 +136,7 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object, assetNames() As
 
     Dim i As Long
     For i = 1 To nAssets
-        headers(10 + i) = "W_" & assetNames(i - 1 + LBound(assetNames))
+        headers(10 + i) = "W_" & CStr(posKeys(i))
     Next i
 
     wsDash.Range(wsDash.Cells(startRow, 1), wsDash.Cells(startRow, UBound(headers))).Value = headers
@@ -156,7 +164,7 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object, assetNames() As
         outData(rowIdx, 10) = port.Metrics.DownsideBeta
 
         For i = 1 To nAssets
-            outData(rowIdx, 10 + i) = port.GetWeight(assetNames(i - 1 + LBound(assetNames)))
+            outData(rowIdx, 10 + i) = port.GetWeight(CStr(posKeys(i)))
         Next i
 
         rowIdx = rowIdx + 1
