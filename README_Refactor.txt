@@ -78,3 +78,5 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 45. Re-import `PositionCls.cls`. I added the `TargetDate` attribute and the `ComputeExpectedReturn` method natively inside the object.
 46. Re-import `Main.bas`. The expected return is perfectly derived natively inside the objects, without external arrays.
 47. Re-import `assetUtils.bas`. The legacy `CalculateExpectedReturns` function has been permanently retired.
+
+48. Re-import `Main.bas` (Restored the `RunClean` macro that was accidentally clipped during a previous refactor).

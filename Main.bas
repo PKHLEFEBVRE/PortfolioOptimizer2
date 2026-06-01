@@ -493,3 +493,30 @@ Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As
 
     Call chartsUtils.UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
 End Sub
+' ==========================================================
+' CLEAN
+' ==========================================================
+
+Sub RunClean()
+    Dim wsDash As Worksheet
+    Set wsDash = Sheets(DASH_SHEET)
+
+    Dim stratR As Long, stratC As Long
+    stratR = wsDash.Range("StrategyTableStart").Row + 1
+    stratC = wsDash.Range("StrategyTableStart").Column
+    wsDash.Range(wsDash.Cells(stratR, stratC), wsDash.Cells(stratR + 5, stratC + 100)).ClearContents
+
+    Dim inputR As Long, inputC As Long
+    inputR = wsDash.Range("InputTableStart").Row + 1
+    inputC = wsDash.Range("InputTableStart").Column
+    wsDash.Range(wsDash.Cells(inputR, inputC - 1), wsDash.Cells(stratR - 3, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
+
+    Dim corrR As Long
+    corrR = wsDash.Range("CorrMatrixStart").Row + 1
+    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("CorrMatrixStart").Column), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column + 50)).ClearContents
+    corrR = wsDash.Range("StrategyWeightsStart").Row + 1
+    wsDash.Range(wsDash.Cells(corrR - 1, wsDash.Range("StrategyWeightsStart").Column + 1), wsDash.Cells(corrR - 1, wsDash.Range("CorrMatrixStart").Column)).ClearContents
+    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("StrategyWeightsStart").Column - 1), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column - 2)).ClearContents
+    Sheets(CHART_SHEET).Cells.ClearContents
+    Sheets(WEIGHTS_SHEET).Cells.ClearContents
+End Sub
