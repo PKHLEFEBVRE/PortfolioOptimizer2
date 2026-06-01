@@ -295,7 +295,7 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object)
     wsDash.Range(wsDash.Cells(wStartRow, 1), wsDash.Cells(wStartRow, UBound(wHeaders))).Interior.Color = RGB(31, 73, 125)
 
     Dim wData() As Variant
-    ReDim wData(1 To portfoliosDict.Count, 1 To UBound(wHeaders))
+    ReDim wData(1 To portfoliosDict.Count + 2, 1 To UBound(wHeaders))
 
     rowIdx = 1
     For Each key In portfoliosDict.Keys
@@ -310,15 +310,59 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object)
         rowIdx = rowIdx + 1
     Next key
 
-    wsDash.Range(wsDash.Cells(wStartRow + 1, 1), wsDash.Cells(wStartRow + portfoliosDict.Count, UBound(wHeaders))).Value = wData
+    ' Extract Current Equity Allocations from the fund
+    Dim equityPositions As Object
+    Set equityPositions = DataUtils.GetEquityPositionsFromFund()
+
+    Dim equitySum As Double
+    equitySum = 0
+    Dim eKey As Variant
+    For Each eKey In equityPositions.Keys
+        equitySum = equitySum + equityPositions(eKey).Weight
+    Next eKey
+
+    ' Output CURRENT
+    wData(rowIdx, 1) = "CURRENT"
+    For i = 1 To nAssets
+        Dim aName As String
+        aName = CStr(posKeys(i))
+        If equityPositions.Exists(aName) And equitySum <> 0 Then
+            wData(rowIdx, 1 + i) = equityPositions(aName).Weight / equitySum
+        Else
+            wData(rowIdx, 1 + i) = 0
+        End If
+    Next i
+
+    ' Output DIFF (MEAN - CURRENT)
+    rowIdx = rowIdx + 1
+    wData(rowIdx, 1) = "DIFF (MEAN - CURRENT)"
+
+    Dim meanRow As Long
+    Dim r As Long
+    For r = 1 To portfoliosDict.Count
+        If wData(r, 1) = "MEAN" Then
+            meanRow = r
+            Exit For
+        End If
+    Next r
+
+    For i = 1 To nAssets
+        If meanRow > 0 Then
+            wData(rowIdx, 1 + i) = CDbl(wData(meanRow, 1 + i)) - CDbl(wData(rowIdx - 1, 1 + i))
+        Else
+            wData(rowIdx, 1 + i) = 0
+        End If
+    Next i
+
+    wsDash.Range(wsDash.Cells(wStartRow + 1, 1), wsDash.Cells(wStartRow + portfoliosDict.Count + 2, UBound(wHeaders))).Value = wData
 
     ' Format Weights Table
     Dim wRange As Range
-    Set wRange = wsDash.Range(wsDash.Cells(wStartRow, 1), wsDash.Cells(wStartRow + portfoliosDict.Count, UBound(wHeaders)))
+    Set wRange = wsDash.Range(wsDash.Cells(wStartRow, 1), wsDash.Cells(wStartRow + portfoliosDict.Count + 2, UBound(wHeaders)))
     wRange.Borders.LineStyle = xlContinuous
     wRange.HorizontalAlignment = xlCenter
 
-    wsDash.Range(wsDash.Cells(wStartRow + 1, 2), wsDash.Cells(wStartRow + portfoliosDict.Count, UBound(wHeaders))).NumberFormat = "0.00%"
+    wsDash.Range(wsDash.Cells(wStartRow + 1, 2), wsDash.Cells(wStartRow + portfoliosDict.Count + 2, UBound(wHeaders))).NumberFormat = "0.00%"
 
     wsDash.Columns.AutoFit
     wsDash.Activate

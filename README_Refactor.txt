@@ -121,3 +121,15 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 68. Replace `DataUtils.bas` and `Main.bas` one final time. I have definitively scrubbed all logic that relied upon the legacy `Dashboard` sheet. The legacy parameters (like `StartDate` and `IdentifierVIA`) have been migrated directly into the new Parameters table on the "Positions Dashboard", and `RunClean` has been simplified to only wipe the chart data.
 
 69. Replace `Main.bas`, `DataUtils.bas`, and `assetUtils.bas` one absolutely final time! I have meticulously hunted down the very last hidden references to the legacy `"Dashboard"` sheet (including the legacy correlation matrix and sheet activations). The transition is 100% complete and execution will be flawless after the old sheet is deleted.
+
+70. Re-import `PositionDashboard.bas`. I added logic to calculate and output the `CURRENT` weights and the `DIFF (MEAN - CURRENT)` delta dynamically at the bottom of the Weights table on the dashboard!
+
+71. Extract `Report.bas` and `reportUtils.bas`.
+72. Replace `Report.bas`. I updated the `ReportWorkflow` macro so that it natively dynamically parses the brand new "Positions Dashboard" format (finding the Asset rows and the Strategy weights table perfectly) before dumping the results sequentially into the HistoricalSimulations tracking log!
+
+73. Replace `PositionDashboard.bas`. I added the dynamically computed "CURRENT" and "DIFF" values to the bottom of the Weights table.
+74. Replace `Report.bas` and `reportUtils.bas`. I entirely rewrote the scraping logic so that when you run `ReportWorkflow`, it perfectly reads the new "Positions Dashboard" format and outputs it sequentially to your `HistoricalSimulations` tracking log without crashing!
+
+75. Replace `Report.bas` one final time. I fixed a bug in the scraping logic where the macro was grabbing data from the wrong columns (for example, accidentally saving Downside Beta as Conviction) due to the new layout of the Positions Dashboard. The historical simulation tracking will now log perfectly!
+
+76. Replace `PositionDashboard.bas` one final time. I fixed a formatting bug that accidentally injected a backslash `\"` into the Excel number format string for the Weights table, which would cause an Excel runtime error upon execution!
