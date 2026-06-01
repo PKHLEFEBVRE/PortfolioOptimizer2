@@ -15,35 +15,27 @@ Private Const ENGINE_SHEET As String = "Engine"
 ' Optimizes the weights in the provided portfolio based on its StrategyName.
 ' It modifies the portfolio's weights in place.
 Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWeights() As Double, ByRef sumWeights() As Double)
-    Dim wsDash As Worksheet, wsEng As Worksheet
-    Dim optRange As Range, optRangeC As Range
-    Set wsDash = Sheets(DASH_SHEET)
+    Dim wsEng As Worksheet
+    Dim optRange As Range
     Set wsEng = Sheets(ENGINE_SHEET)
     Set optRange = wsEng.Range("OptWeights")
-    Set optRangeC = wsEng.Range("OptWeights")
 
     Dim stratName As String
     stratName = UCase(port.StrategyName)
 
-    Dim inputStart As Long
-    inputStart = wsDash.Range("InputTableStart").Row + 1
-
     Dim cVal As Double
     Dim m As Integer, j As Integer
     Dim wCount As Integer
-    wCount = 4 ' Hardcoded count of active optimization strategies contributing to MEAN. In original, UBound(strategies) - 1
+    wCount = 4 ' Hardcoded count of active optimization strategies contributing to MEAN.
 
     ' Retrieve the asset names dynamically from the portfolio
     Dim nAssets As Integer
     Dim posKeys() As Variant
 
-    ' Notice that the portfolio object must expose its positions keys to know which assets to optimize
-    ' Wait, SimulatedPortfolioCls does not currently expose a GetPositionsKeys method.
-    ' We will add one. For now, we assume it exists as `port.GetPositionNames()`
     posKeys = port.GetPositionNames()
     nAssets = UBound(posKeys)
 
-    ' Always start the engine sheet with equal weights for the solver
+    ' Always start the engine sheet with equal weights for the solver (if solver is used)
     Dim eqW As Double
     eqW = 1# / nAssets
     For j = 1 To nAssets
@@ -54,36 +46,57 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
         ' Portfolio is already initialized with equal weights. Do nothing.
 
     ElseIf stratName = "CUSTOM" Then
-        Dim convictions() As Variant
-        convictions = wsDash.Range(wsDash.Cells(inputStart, wsDash.Range("customWeightCol").Column), wsDash.Cells(inputStart + nAssets - 1, wsDash.Range("customWeightCol").Column)).Value
-        convictions = Application.WorksheetFunction.Transpose(convictions)
-
-        Dim sum_ As Long
+        Dim sum_ As Double
         sum_ = 0
+        Dim pos As PositionCls
+
+        ' Sum up all convictions
         For m = 1 To nAssets
-            sum_ = sum_ + convictions(m)
+            Set pos = port.GetPosition(CStr(posKeys(m)))
+            If Not pos Is Nothing Then
+                sum_ = sum_ + pos.Conviction
+            End If
         Next m
 
+        ' Assign normalized conviction weights
         For m = 1 To nAssets
-            cVal = convictions(m) / sum_
-            port.SetWeight CStr(posKeys(m)), cVal
+            Set pos = port.GetPosition(CStr(posKeys(m)))
+            If Not pos Is Nothing And sum_ > 0 Then
+                cVal = pos.Conviction / sum_
+                port.SetWeight CStr(posKeys(m)), cVal
+            Else
+                port.SetWeight CStr(posKeys(m)), 0
+            End If
         Next m
 
     ElseIf stratName = "ER/VOL" Then
+        Dim currentSum As Double
+        currentSum = 0
+
+        ' Temporarily store raw ER/VOL values
+        Dim erVolArr() As Double
+        ReDim erVolArr(1 To nAssets)
+
         For m = 1 To nAssets
-            cVal = wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value / _
-                   wsDash.Cells(inputStart + m - 1, wsDash.Range("AssetMetricsStart").Column + 1).Value
-            optRangeC.Cells(1, m).Value = cVal
+            Set pos = port.GetPosition(CStr(posKeys(m)))
+            If Not pos Is Nothing Then
+                If pos.Metrics.Vol > 0 Then
+                    erVolArr(m) = pos.ExpectedReturn / pos.Metrics.Vol
+                Else
+                    erVolArr(m) = 0
+                End If
+                currentSum = currentSum + erVolArr(m)
+            End If
         Next m
 
-        Dim currentSum As Double
-        currentSum = Application.WorksheetFunction.sum(optRange)
-
-        If currentSum <> 0 Then
-            For m = 1 To nAssets
-                port.SetWeight CStr(posKeys(m)), optRange.Cells(1, m).Value / currentSum
-            Next m
-        End If
+        ' Normalize and assign
+        For m = 1 To nAssets
+            If currentSum <> 0 Then
+                port.SetWeight CStr(posKeys(m)), erVolArr(m) / currentSum
+            Else
+                port.SetWeight CStr(posKeys(m)), 0
+            End If
+        Next m
 
     ElseIf stratName = "MEAN" Then
         For m = 1 To nAssets

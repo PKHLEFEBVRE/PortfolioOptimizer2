@@ -95,3 +95,6 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 53. Replace `Main.bas` one final time. I fixed the "Wrong number of arguments" compile error caused by directly indexing into the array properties of the OOP objects (e.g., `pos.Dates(UBound)`). VBA requires properties returning arrays to be assigned to a local array variable first.
 
 54. Replace `allocationLogic.bas` one final time. I fixed the identical "Wrong number of arguments" compile error caused by directly indexing into `portMean.EquityCurve(i, 1)`.
+
+55. Re-import `SimulatedPortfolioCls.cls`. I added `GetPosition()` so that objects can dynamically introspect their constituents.
+56. Re-import `OptimizerCls.cls`. I successfully decoupled it completely from reading any dashboard sheet cells! It now inherently uses `pos.Conviction`, `pos.ExpectedReturn`, and `pos.Metrics.Vol` to compute `CUSTOM` and `ER/VOL` optimizations mathematically directly from the objects in memory!

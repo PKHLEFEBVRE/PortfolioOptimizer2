@@ -112,6 +112,14 @@ Public Function GetPositionNames() As Variant()
     GetPositionNames = keysArray
 End Function
 
+Public Function GetPosition(ByVal assetName As String) As PositionCls
+    If p_Positions.Exists(assetName) Then
+        Set GetPosition = p_Positions(assetName)
+    Else
+        Set GetPosition = Nothing
+    End If
+End Function
+
 Public Sub ApplyRiskOverlay(ByVal multiplier As Double)
     Dim key As Variant
     For Each key In p_Weights.Keys
