@@ -91,3 +91,7 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 37. Re-import `SimulatedPortfolioCls.cls`. I fixed the compilation error inside `ComputeMetrics` where it accidentally attempted to pass the old `benchRets` variable to the `MetricsCalculatorCls` instead of the newly standardized `benchPort` object.
 
 52. Replace `SimulatedPortfolioCls.cls` one final time. I fixed the `Variable not defined` compilation error that was caused by an orphaned `benchRets` variable reference in the `ComputeMetrics` function.
+
+53. Replace `Main.bas` one final time. I fixed the "Wrong number of arguments" compile error caused by directly indexing into the array properties of the OOP objects (e.g., `pos.Dates(UBound)`). VBA requires properties returning arrays to be assigned to a local array variable first.
+
+54. Replace `allocationLogic.bas` one final time. I fixed the identical "Wrong number of arguments" compile error caused by directly indexing into `portMean.EquityCurve(i, 1)`.

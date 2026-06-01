@@ -45,8 +45,10 @@ Sub RunUpdateMatrices()
     ' Extract the last date from the first position
     Dim firstPos As PositionCls
     Set firstPos = masterPositions(GetDictKeys(masterPositions)(1))
+    Dim tmpDates() As Date
+    tmpDates = firstPos.Dates
     Dim lastDate As Date
-    lastDate = firstPos.Dates(UBound(firstPos.Dates))
+    lastDate = tmpDates(UBound(tmpDates))
 
     Dim meanRets() As Double
     Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets)
@@ -69,8 +71,10 @@ Sub RunAllSolvers()
 
     Dim firstPos As PositionCls
     Set firstPos = masterPositions(GetDictKeys(masterPositions)(1))
+    Dim tmpDates() As Date
+    tmpDates = firstPos.Dates
     Dim lastDate As Date
-    lastDate = firstPos.Dates(UBound(firstPos.Dates))
+    lastDate = tmpDates(UBound(tmpDates))
     Dim dates() As Date
     dates = firstPos.Dates
 
@@ -232,8 +236,10 @@ Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Dat
             s = s + lRets(j)
         Next j
 
+        Dim tmpDates() As Date
+        tmpDates = pos.Dates
         Dim dateDiff As Double
-        dateDiff = pos.Dates(UBound(pos.Dates)) - pos.Dates(LBound(pos.Dates))
+        dateDiff = tmpDates(UBound(tmpDates)) - tmpDates(LBound(tmpDates))
         If dateDiff > 0 Then
             meanRets(i) = s / dateDiff * 365
         Else

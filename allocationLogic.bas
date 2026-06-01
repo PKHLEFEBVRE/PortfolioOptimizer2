@@ -12,8 +12,13 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     Dim HistoricalMDDFactor As Double, benchMDD As Double, portMDD As Double
     Dim finalRiskFactor As Double
 
+    Dim meanEq() As Double
+    meanEq = portMean.EquityCurve
+    Dim benchEq() As Double
+    benchEq = portBench.EquityCurve
+
     Dim nDays As Long
-    nDays = UBound(portMean.EquityCurve, 1)
+    nDays = UBound(meanEq, 1)
 
     Dim chartRets() As Double, benchRets() As Double
     ReDim chartRets(1 To nDays - 1)
@@ -21,14 +26,14 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
 
     Dim i As Long
     For i = 1 To nDays - 1
-        If portMean.EquityCurve(i, 1) > 0 And portMean.EquityCurve(i + 1, 1) > 0 Then
-            chartRets(i) = Log(portMean.EquityCurve(i + 1, 1) / portMean.EquityCurve(i, 1))
+        If meanEq(i, 1) > 0 And meanEq(i + 1, 1) > 0 Then
+            chartRets(i) = Log(meanEq(i + 1, 1) / meanEq(i, 1))
         Else
             chartRets(i) = 0
         End If
 
-        If portBench.EquityCurve(i, 1) > 0 And portBench.EquityCurve(i + 1, 1) > 0 Then
-            benchRets(i) = Log(portBench.EquityCurve(i + 1, 1) / portBench.EquityCurve(i, 1))
+        If benchEq(i, 1) > 0 And benchEq(i + 1, 1) > 0 Then
+            benchRets(i) = Log(benchEq(i + 1, 1) / benchEq(i, 1))
         Else
             benchRets(i) = 0
         End If
