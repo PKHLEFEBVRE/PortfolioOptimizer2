@@ -55,13 +55,12 @@ Sub AlignSecurityDataRefactored()
     startDate = ThisWorkbook.Sheets("Dashboard").Range("D2").Value
     Set wsInput = ThisWorkbook.Sheets("Data")
 
+    ' 1. Extract all asset prices
     lastCol = wsInput.Cells(1, wsInput.Columns.Count).End(xlToLeft).Column
     Set dictPrices = ExtractAssetData(wsInput, lastCol)
 
-    Set dictBenchPrices = CreateObject("Scripting.Dictionary")
     Dim assetNames() As Variant
     assetNames = dictPrices.Keys()
-
     If UBound(assetNames) < 1 Then
         MsgBox "Not enough benchmark assets found.", vbExclamation
         Application.ScreenUpdating = True
@@ -72,20 +71,39 @@ Sub AlignSecurityDataRefactored()
     b1 = assetNames(0)
     b2 = assetNames(1)
 
-    Dim dictB1 As Object, dictB2 As Object
-    Set dictB1 = dictPrices(b1)
-    Set dictB2 = dictPrices(b2)
+    ' 2. Determine overlapping common dates for the benchmark
+    If Not DetermineMasterDates(dictPrices(b1), dictPrices(b2), startDate, masterDates) Then
+        MsgBox "No overlapping benchmark dates found on or after the start date.", vbExclamation
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
 
+    ' 3. Build the 50/50 benchmark curve
+    Set dictBenchPrices = BuildBenchmarkFromAssets(dictPrices(b1), dictPrices(b2), masterDates)
+
+    ' 4. Backfill any missing historical fund data using Downside Beta against the benchmark
+    Dim betaString As String
+    betaString = BackfillMissingAssetHistory(dictPrices, masterDates, dictBenchPrices, startDate, b1, b2)
+
+    ' 5. Output the cleaned matrix
+    WriteFundAlignedDataWithArray wsInput, masterDates, dictPrices
+
+    RunUpdateMatrices
+    ThisWorkbook.Sheets("Dashboard").Activate
+
+    Application.ScreenUpdating = True
+    MsgBox "Data aligned and backfilled successfully!" & vbCr & "From " & masterDates(1) & vbCr & "To " & masterDates(UBound(masterDates)) & betaString, vbInformation
+End Sub
+
+' -------------------------------------------------------------------------
+' MODERATE REFACTOR HELPERS
+' -------------------------------------------------------------------------
+
+Private Function DetermineMasterDates(dictB1 As Object, dictB2 As Object, startDate As Date, ByRef outDates() As Date) As Boolean
     Dim dKey As Variant
-    Dim count As Long
-    count = 0
-
-    Dim base1 As Double, base2 As Double
-    Dim isBaseSet As Boolean
-    isBaseSet = False
-
     Dim allDates As Object
     Set allDates = CreateObject("Scripting.Dictionary")
+
     For Each dKey In dictB1.Keys
         If dictB2.Exists(dKey) Then
             If CDate(dKey) >= startDate Then
@@ -97,13 +115,13 @@ Sub AlignSecurityDataRefactored()
     Next dKey
 
     If allDates.Count = 0 Then
-        MsgBox "No overlapping benchmark dates found on or after the start date.", vbExclamation
-        Application.ScreenUpdating = True
-        Exit Sub
+        DetermineMasterDates = False
+        Exit Function
     End If
 
     Dim arrD() As Date
     ReDim arrD(1 To allDates.Count)
+    Dim count As Long
     count = 0
     For Each dKey In allDates.Keys
         count = count + 1
@@ -111,33 +129,48 @@ Sub AlignSecurityDataRefactored()
     Next dKey
 
     SortDatesAscending arrD
-    ReDim masterDates(1 To UBound(arrD))
+
+    ReDim outDates(1 To UBound(arrD))
     For count = 1 To UBound(arrD)
-        masterDates(count) = arrD(count)
+        outDates(count) = arrD(count)
     Next count
 
-    For count = 1 To UBound(masterDates)
+    DetermineMasterDates = True
+End Function
+
+Private Function BuildBenchmarkFromAssets(dictB1 As Object, dictB2 As Object, masterDates() As Date) As Object
+    Dim dictBench As Object
+    Set dictBench = CreateObject("Scripting.Dictionary")
+
+    Dim base1 As Double, base2 As Double
+    Dim isBaseSet As Boolean
+    isBaseSet = False
+    Dim i As Long
+
+    For i = 1 To UBound(masterDates)
         If Not isBaseSet Then
-            base1 = dictB1(masterDates(count))
-            base2 = dictB2(masterDates(count))
+            base1 = dictB1(masterDates(i))
+            base2 = dictB2(masterDates(i))
             isBaseSet = True
         End If
 
-        Dim p1 As Double, p2 As Double
-        p1 = dictB1(masterDates(count))
-        p2 = dictB2(masterDates(count))
-
         Dim val1 As Double, val2 As Double
-        val1 = (p1 / base1) * 100
-        val2 = (p2 / base2) * 100
+        val1 = (dictB1(masterDates(i)) / base1) * 100
+        val2 = (dictB2(masterDates(i)) / base2) * 100
 
-        dictBenchPrices.Add masterDates(count), (val1 + val2) / 2
-    Next count
+        dictBench.Add masterDates(i), (val1 + val2) / 2
+    Next i
 
+    Set BuildBenchmarkFromAssets = dictBench
+End Function
+
+Private Function BackfillMissingAssetHistory(dictPrices As Object, masterDates() As Date, dictBenchPrices As Object, startDate As Date, b1 As String, b2 As String) As String
     Dim assetKey As Variant
     Dim secDict As Object
     Dim firstAssetDate As Date
-    Dim assetBeta As Double, assetBetas As Object
+    Dim assetBeta As Double
+    Dim assetBetas As Object
+    Dim dKey As Variant
 
     Set assetBetas = CreateObject("Scripting.Dictionary")
 
@@ -160,13 +193,6 @@ Sub AlignSecurityDataRefactored()
         End If
     Next assetKey
 
-    WriteFundAlignedDataWithArray wsInput, masterDates, dictPrices
-
-    RunUpdateMatrices
-    ThisWorkbook.Sheets("Dashboard").Activate
-
-    Application.ScreenUpdating = True
-
     Dim betaString As String
     betaString = ""
     If assetBetas.Count > 0 Then
@@ -175,9 +201,9 @@ Sub AlignSecurityDataRefactored()
             betaString = betaString & assetKey & " : " & Round(assetBetas(assetKey), 2) & vbCr
         Next assetKey
     End If
-    MsgBox "Data aligned and backfilled successfully!" & vbCr & "From " & masterDates(1) & vbCr & "To " & masterDates(UBound(masterDates)) & betaString, vbInformation
 
-End Sub
+    BackfillMissingAssetHistory = betaString
+End Function
 
 Public Function GetEquityPositionsFromFund() As Dictionary
 

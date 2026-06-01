@@ -54,3 +54,7 @@ To view the new Positions Dashboard:
 32. Final `Main.bas` fix: Ensured `benchRets()` is declared only once and perfectly populated with the benchmark's simulated log returns to fix the compile error and properly output Downside Beta.
 
 33. Re-import `SimulatedPortfolioCls.cls`. I have mathematically upgraded the `Simulate` backtesting engine to explicitly track and hold uninvested Cash (which happens whenever the Risk Overlay shrinks total exposure to less than 100%). This perfectly resolves the issue of artificial drawdowns during rebalances!
+
+34. Re-import `DataUtils.bas` again. I have finally implemented the "moderate refactor" of the `AlignSecurityDataRefactored` macro! It is now a clean 30-line orchestrator that delegates to `DetermineMasterDates`, `BuildBenchmarkFromAssets`, and `BackfillMissingAssetHistory`.
+
+35. Replace `Main.bas` one final time. I fixed a simple `Duplicate declaration in current scope` compile error that was caused by defining the `rf` and `conf` variables both before and inside the portfolio simulation loop.

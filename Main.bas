@@ -339,9 +339,7 @@ Sub RunAllSolvers()
         simPort.Simulate
 
         ' 5. Compute performance metrics
-        Dim rf As Double
         rf = Sheets(DASH_SHEET).Range("D4").Value
-        Dim conf As Double
         conf = Sheets(DASH_SHEET).Range("D5").Value
         simPort.ComputeMetrics rf, conf, benchRets
 
