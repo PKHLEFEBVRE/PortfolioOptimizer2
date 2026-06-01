@@ -39,6 +39,10 @@ Public Property Get DailyWeights() As Double()
     DailyWeights = p_DailyWeights
 End Property
 
+Public Property Get LogReturns() As Double()
+    LogReturns = p_LogRets
+End Property
+
 Public Property Get Metrics() As MetricsCalculatorCls
     Set Metrics = p_Metrics
 End Property
@@ -222,7 +226,7 @@ Public Sub Simulate()
     Next i
 End Sub
 
-Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optional benchRets As Variant)
+Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optional benchPort As SimulatedPortfolioCls = Nothing)
     Dim nDays As Long
     nDays = UBound(p_EquityCurve, 1)
 
@@ -234,5 +238,5 @@ Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optio
     Next i
 
     ' Simulated Portfolios use Standard Deviation volatility by default in original code
-    p_Metrics.Calculate eq1D, p_Dates, p_LogRets, False, riskFreeRate, varConfidence, benchRets, "Portfolio"
+    p_Metrics.Calculate eq1D, p_Dates, p_LogRets, False, riskFreeRate, varConfidence, benchPort, "Portfolio"
 End Sub

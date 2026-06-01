@@ -80,3 +80,14 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 47. Re-import `assetUtils.bas`. The legacy `CalculateExpectedReturns` function has been permanently retired.
 
 48. Re-import `Main.bas` (Restored the `RunClean` macro that was accidentally clipped during a previous refactor).
+
+48. Re-import `MetricsCalculatorCls.cls`. The Calculate function now natively accepts a `SimulatedPortfolioCls` object instead of an array.
+49. Re-import `SimulatedPortfolioCls.cls`. It now exposes its `LogReturns` directly via property, and correctly intercepts the benchmark port.
+50. Re-import `PositionCls.cls`. Updated its metrics caller to accept the object.
+51. Re-import `Main.bas`. The loading sequence has been carefully altered to ensure the BENCHMARK portfolio is completely generated *before* any fund assets attempt to calculate their Downside Beta metrics, successfully removing the final array middleman!
+
+36. Replace `Main.bas` one final time. I have perfectly resolved the compilation errors by ensuring `benchRets` arrays were completely dropped from the signatures and logic blocks, since `ComputeMetrics` now inherently accepts the `benchPort` object directly!
+
+37. Re-import `SimulatedPortfolioCls.cls`. I fixed the compilation error inside `ComputeMetrics` where it accidentally attempted to pass the old `benchRets` variable to the `MetricsCalculatorCls` instead of the newly standardized `benchPort` object.
+
+52. Replace `SimulatedPortfolioCls.cls` one final time. I fixed the `Variable not defined` compilation error that was caused by an orphaned `benchRets` variable reference in the `ComputeMetrics` function.

@@ -32,7 +32,7 @@ Public Property Get DownsideBeta() As Double: DownsideBeta = p_mDownsideBeta: En
 ' We expect 1D arrays: prices(1 to n), dates(1 to n), logRets(1 to n-1)
 Public Sub Calculate(prices() As Double, dates() As Date, logRets() As Double, _
                      useEWMA As Boolean, riskFreeRate As Double, varConfidence As Double, _
-                     Optional benchRets As Variant, Optional calcType As String = "Asset")
+                     Optional benchPort As SimulatedPortfolioCls = Nothing, Optional calcType As String = "Asset")
 
     Dim nDays As Long
     nDays = UBound(prices) - LBound(prices) + 1
@@ -141,10 +141,14 @@ Public Sub Calculate(prices() As Double, dates() As Date, logRets() As Double, _
     p_mSemiDev = CalculateSemiDeviation(logRets, 0)
 
     ' Downside Beta
-    If Not IsMissing(benchRets) Then
-        If IsArray(benchRets) Then
-            p_mDownsideBeta = ComputeDownsideBeta(benchRets, logRets, 256)
+    If Not benchPort Is Nothing Then
+        Dim bRets() As Double
+        bRets = benchPort.LogReturns
+        If UBound(bRets) > 0 Then
+            p_mDownsideBeta = ComputeDownsideBeta(bRets, logRets, 256)
         End If
+    Else
+        p_mDownsideBeta = 0
     End If
 End Sub
 

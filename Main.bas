@@ -37,6 +37,11 @@ Sub RunUpdateMatrices()
 
     If masterPositions.Count < 1 Then Exit Sub
 
+    Dim pKey As Variant
+    For Each pKey In masterPositions.Keys
+        masterPositions(pKey).ComputeMetrics rf, conf
+    Next pKey
+
     ' Extract the last date from the first position
     Dim firstPos As PositionCls
     Set firstPos = masterPositions(GetDictKeys(masterPositions)(1))
@@ -90,18 +95,17 @@ Sub RunAllSolvers()
 
     ' 5. Build and simulate Benchmark
     Dim benchPort As SimulatedPortfolioCls
-    Dim benchRets() As Double
-    Set benchPort = BuildBenchmarkPortfolio(benchPositions, dates, rf, conf, benchRets)
+    Set benchPort = BuildBenchmarkPortfolio(benchPositions, dates, rf, conf)
     masterPortfolios.Add "BENCHMARK", benchPort
 
-    ' 6. Inject benchRets into Fund Positions
+    ' 6. Inject benchPort into Fund Positions
     Dim pKey As Variant
     For Each pKey In masterPositions.Keys
-        masterPositions(pKey).ComputeMetrics rf, conf, benchRets
+        masterPositions(pKey).ComputeMetrics rf, conf, benchPort
     Next pKey
 
     ' 7. Optimize and Simulate Active Strategies
-    Call OptimizeAndSimulateStrategies(strategies, minWeights, maxWeights, masterPositions, masterPortfolios, rf, conf, benchRets)
+    Call OptimizeAndSimulateStrategies(strategies, minWeights, maxWeights, masterPositions, masterPortfolios, rf, conf, benchPort)
 
     ' 8. Output to Dashboards
     Call OutputLegacyDashboard(masterPositions, masterPortfolios, strategies, lastDate)
@@ -163,7 +167,6 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
         Set cachePos = New PositionCls
         cachePos.AssetName = assetNames(cacheIdx)
         cachePos.InitializeData pPrices, pDates
-        cachePos.ComputeMetrics rf, conf
 
         If convictions.Exists(cachePos.AssetName) Then
             Dim cDict As Object
@@ -188,7 +191,7 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
     Next cacheIdx
 End Sub
 
-Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Date, rf As Double, conf As Double, ByRef benchRets() As Double) As SimulatedPortfolioCls
+Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Date, rf As Double, conf As Double) As SimulatedPortfolioCls
     Dim benchPort As SimulatedPortfolioCls
     Set benchPort = New SimulatedPortfolioCls
     benchPort.StrategyName = "BENCHMARK"
@@ -201,20 +204,7 @@ Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Da
     benchPort.SetEqualWeights
     benchPort.Simulate
 
-    Dim benchCurve() As Double
-    benchCurve = benchPort.EquityCurve
-    ReDim benchRets(1 To UBound(dates) - 1)
-
-    Dim bIdx As Long
-    For bIdx = 1 To UBound(dates) - 1
-        If benchCurve(bIdx, 1) > 0 And benchCurve(bIdx + 1, 1) > 0 Then
-            benchRets(bIdx) = Log(benchCurve(bIdx + 1, 1) / benchCurve(bIdx, 1))
-        Else
-            benchRets(bIdx) = 0
-        End If
-    Next bIdx
-
-    benchPort.ComputeMetrics rf, conf, benchRets
+    benchPort.ComputeMetrics rf, conf
     Set BuildBenchmarkPortfolio = benchPort
 End Function
 
@@ -345,7 +335,7 @@ Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As
     Next k
 End Sub
 
-Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As Double, maxWeights() As Double, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchRets() As Double)
+Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As Double, maxWeights() As Double, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchPort As SimulatedPortfolioCls)
     Dim optimizer As OptimizerCls
     Set optimizer = New OptimizerCls
 
@@ -377,7 +367,7 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
         optimizer.Optimize simPort, minWeights, maxWeights, sumWeights
 
         simPort.Simulate
-        simPort.ComputeMetrics rf, conf, benchRets
+        simPort.ComputeMetrics rf, conf, benchPort
 
         masterPortfolios.Add simPort.StrategyName, simPort
     Next i
@@ -394,7 +384,7 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
         If p.StrategyName <> "EQUAL WEIGHT" And p.StrategyName <> "MEAN" And p.StrategyName <> "BENCHMARK" Then
             p.ApplyRiskOverlay riskMultiplier
             p.Simulate
-            p.ComputeMetrics rf, conf, benchRets
+            p.ComputeMetrics rf, conf, benchPort
         End If
     Next pKey
 End Sub

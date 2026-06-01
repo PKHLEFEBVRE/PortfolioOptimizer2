@@ -137,9 +137,9 @@ Public Sub InitializeData(pricesIn() As Double, datesIn() As Date)
     Next i
 End Sub
 
-Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optional benchRets As Variant)
+Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optional benchPort As SimulatedPortfolioCls = Nothing)
     ' Individual assets use EWMA volatility by default in original code
-    p_Metrics.Calculate p_Prices, p_Dates, p_LogRets, True, riskFreeRate, varConfidence, benchRets, "Asset"
+    p_Metrics.Calculate p_Prices, p_Dates, p_LogRets, True, riskFreeRate, varConfidence, benchPort, "Asset"
 End Sub
 
 Public Sub ComputeExpectedReturn(histMeanRet As Double, currDate As Date)
