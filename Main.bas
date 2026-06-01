@@ -27,19 +27,24 @@ End Sub
 Sub RunUpdateMatrices()
     Application.ScreenUpdating = False
 
-    Dim prices() As Variant, dates() As Date, assetNames() As String
-    Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
-    If UBound(prices, 2) < 1 Then Exit Sub
-
     Dim rf As Double, conf As Double
     rf = Sheets(DASH_SHEET).Range("D4").Value
     conf = Sheets(DASH_SHEET).Range("D5").Value
 
     Dim masterPositions As Object
-    Set masterPositions = CacheMasterPositions(prices, assetNames, dates, rf, conf)
+    Dim benchPositions As Object
+    Call LoadAllPositions(masterPositions, benchPositions, rf, conf)
+
+    If masterPositions.Count < 1 Then Exit Sub
+
+    ' Extract the last date from the first position
+    Dim firstPos As PositionCls
+    Set firstPos = masterPositions(GetDictKeys(masterPositions)(1))
+    Dim lastDate As Date
+    lastDate = firstPos.Dates(UBound(firstPos.Dates))
 
     Dim meanRets() As Double, expReturns() As Double
-    Call CalculateStatsFromObjects(masterPositions, dates(UBound(dates)), meanRets, expReturns)
+    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets, expReturns)
 
     Application.ScreenUpdating = True
 End Sub
@@ -52,16 +57,17 @@ Sub RunAllSolvers()
     rf = Sheets(DASH_SHEET).Range("D4").Value
     conf = Sheets(DASH_SHEET).Range("D5").Value
 
-    ' 1. Fetch raw data
-    Dim prices() As Variant, dates() As Date, assetNames() As String
-    Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
-
-    Dim lastDate As Date
-    lastDate = dates(UBound(dates))
-
-    ' 2. Cache OOP objects FIRST (Extracts directly from raw prices)
+    ' 1. & 2. Fetch raw data and Cache OOP objects FIRST
     Dim masterPositions As Object
-    Set masterPositions = CacheMasterPositions(prices, assetNames, dates, rf, conf)
+    Dim benchPositions As Object
+    Call LoadAllPositions(masterPositions, benchPositions, rf, conf)
+
+    Dim firstPos As PositionCls
+    Set firstPos = masterPositions(GetDictKeys(masterPositions)(1))
+    Dim lastDate As Date
+    lastDate = firstPos.Dates(UBound(firstPos.Dates))
+    Dim dates() As Date
+    dates = firstPos.Dates
 
     ' 3. Compute stats dynamically using the PositionCls objects
     Dim meanRets() As Double
@@ -86,7 +92,7 @@ Sub RunAllSolvers()
     ' 5. Build and simulate Benchmark
     Dim benchPort As SimulatedPortfolioCls
     Dim benchRets() As Double
-    Set benchPort = BuildBenchmarkPortfolio(prices, assetNames, dates, rf, conf, benchRets)
+    Set benchPort = BuildBenchmarkPortfolio(benchPositions, dates, rf, conf, benchRets)
     masterPortfolios.Add "BENCHMARK", benchPort
 
     ' 6. Inject benchRets into Fund Positions
@@ -129,9 +135,13 @@ Private Function GetDictKeys(dict As Object) As String()
     GetDictKeys = keysArray
 End Function
 
-Private Function CacheMasterPositions(prices() As Variant, assetNames() As String, dates() As Date, rf As Double, conf As Double) As Object
-    Dim masterPositions As Object
-    Set masterPositions = CreateObject("Scripting.Dictionary")
+Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPositions As Object, rf As Double, conf As Double)
+    Set outFundPositions = CreateObject("Scripting.Dictionary")
+    Set outBenchPositions = CreateObject("Scripting.Dictionary")
+
+    Dim prices() As Variant, dates() As Date, assetNames() As String
+    Call assetUtils.GetHistoricalDataDatesAndNames(prices, dates, assetNames)
+    If UBound(prices, 2) < 1 Then Exit Sub
 
     Dim convictions As Object
     Set convictions = convictionsUtils.getConvictions()
@@ -140,8 +150,7 @@ Private Function CacheMasterPositions(prices() As Variant, assetNames() As Strin
     nTotal = UBound(assetNames)
     Dim cacheIdx As Integer
 
-    ' Fund assets start at index 3 (skipping the 2 benchmarks)
-    For cacheIdx = 3 To nTotal
+    For cacheIdx = 1 To nTotal
         Dim pPrices() As Double, pDates() As Date
         ReDim pPrices(1 To UBound(prices, 1))
         ReDim pDates(1 To UBound(dates))
@@ -169,37 +178,23 @@ Private Function CacheMasterPositions(prices() As Variant, assetNames() As Strin
             On Error GoTo 0
         End If
 
-        masterPositions.Add assetNames(cacheIdx), cachePos
+        If cacheIdx <= 2 Then
+            outBenchPositions.Add assetNames(cacheIdx), cachePos
+        Else
+            outFundPositions.Add assetNames(cacheIdx), cachePos
+        End If
     Next cacheIdx
+End Sub
 
-    Set CacheMasterPositions = masterPositions
-End Function
-
-Private Function BuildBenchmarkPortfolio(prices() As Variant, assetNames() As String, dates() As Date, rf As Double, conf As Double, ByRef benchRets() As Double) As SimulatedPortfolioCls
+Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Date, rf As Double, conf As Double, ByRef benchRets() As Double) As SimulatedPortfolioCls
     Dim benchPort As SimulatedPortfolioCls
     Set benchPort = New SimulatedPortfolioCls
     benchPort.StrategyName = "BENCHMARK"
 
-    Dim cacheIdx As Integer
-    ' Benchmark assets are at index 1 and 2
-    For cacheIdx = 1 To 2
-        Dim pPrices() As Double, pDates() As Date
-        ReDim pPrices(1 To UBound(prices, 1))
-        ReDim pDates(1 To UBound(dates))
-        Dim iDay As Long
-        For iDay = 1 To UBound(prices, 1)
-            pPrices(iDay) = CDbl(prices(iDay, cacheIdx))
-            pDates(iDay) = dates(iDay)
-        Next iDay
-
-        Dim bPos As PositionCls
-        Set bPos = New PositionCls
-        bPos.AssetName = assetNames(cacheIdx)
-        bPos.InitializeData pPrices, pDates
-        bPos.ComputeMetrics rf, conf
-
-        benchPort.AddPosition assetNames(cacheIdx), bPos
-    Next cacheIdx
+    Dim bKey As Variant
+    For Each bKey In benchPositions.Keys
+        benchPort.AddPosition CStr(bKey), benchPositions(bKey)
+    Next bKey
 
     benchPort.SetEqualWeights
     benchPort.Simulate

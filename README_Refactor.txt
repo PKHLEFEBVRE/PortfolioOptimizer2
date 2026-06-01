@@ -72,3 +72,5 @@ To view the new Positions Dashboard:
 All procedural arrays have been eradicated from the optimization process! `OptimizerCls` and `PositionDashboard` now extract keys directly from the newly created `GetPositionNames()` method on `SimulatedPortfolioCls`.
 
 43. Re-import `Main.bas` (Fixed the `GetDictKeys` macro compile error and cleaned up the `Argument Not Optional` signature mismatches that accidentally broke the helpers when removing `fundAssetNames`).
+
+44. Re-import `Main.bas` (Wrapped the `GetHistoricalDataDatesAndNames` matrix-fetching procedure entirely inside the newly renamed `LoadAllPositions` helper. The orchestration logic no longer sees, relies on, or parses the raw `prices`, `dates`, or `assetNames` arrays!).
