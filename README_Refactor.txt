@@ -98,3 +98,10 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 
 55. Re-import `SimulatedPortfolioCls.cls`. I added `GetPosition()` so that objects can dynamically introspect their constituents.
 56. Re-import `OptimizerCls.cls`. I successfully decoupled it completely from reading any dashboard sheet cells! It now inherently uses `pos.Conviction`, `pos.ExpectedReturn`, and `pos.Metrics.Vol` to compute `CUSTOM` and `ER/VOL` optimizations mathematically directly from the objects in memory!
+
+57. Re-import `allocationLogic.bas`. I updated `ComputeFinalRiskFactor` to return a `Dictionary` holding all the constituent factors (`CVaRFactor`, `DDFactor`, `SemiDevFactor`, `HistoricalMDDFactor`) along with the final multiplier.
+58. Re-import `SimulatedPortfolioCls.cls`. I added corresponding properties to the portfolio class to ingest and hold those specific risk factors.
+59. Re-import `Main.bas`. I updated the `ApplyRiskOverlay` call to pass the entire dictionary of risk factors over to the portfolio.
+60. Re-import `PositionDashboard.bas`. I executed the dashboard redesign: generated a Parameters table at the top, split the portfolios into a separate Metrics Table (which now includes columns for every single risk limitation factor) and a separate Weights Table below it!
+
+61. Replace `Main.bas` one final time. I fixed a `Type Mismatch` error where `Main.bas` was still expecting `ComputeFinalRiskFactor` to return a `Double` instead of the newly updated `Dictionary` Object.

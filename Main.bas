@@ -379,8 +379,8 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
     Next i
 
     ' Apply Risk Overlay
-    Dim riskMultiplier As Double
-    riskMultiplier = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"))
+    Dim riskDict As Object
+    Set riskDict = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"))
 
     Dim pKey As Variant
     For Each pKey In masterPortfolios.Keys
@@ -388,7 +388,7 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
         Set p = masterPortfolios(pKey)
 
         If p.StrategyName <> "EQUAL WEIGHT" And p.StrategyName <> "MEAN" And p.StrategyName <> "BENCHMARK" Then
-            p.ApplyRiskOverlay riskMultiplier
+            p.ApplyRiskOverlay riskDict
             p.Simulate
             p.ComputeMetrics rf, conf, benchPort
         End If

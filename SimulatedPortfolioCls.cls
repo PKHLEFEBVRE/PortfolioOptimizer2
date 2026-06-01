@@ -47,6 +47,27 @@ Public Property Get Metrics() As MetricsCalculatorCls
     Set Metrics = p_Metrics
 End Property
 
+Private p_DDFactor As Double
+Private p_CVaRFactor As Double
+Private p_SemiDevFactor As Double
+Private p_HistoricalMDDFactor As Double
+Private p_FinalRiskFactor As Double
+
+Public Property Get DDFactor() As Double: DDFactor = p_DDFactor: End Property
+Public Property Let DDFactor(ByVal value As Double): p_DDFactor = value: End Property
+
+Public Property Get CVaRFactor() As Double: CVaRFactor = p_CVaRFactor: End Property
+Public Property Let CVaRFactor(ByVal value As Double): p_CVaRFactor = value: End Property
+
+Public Property Get SemiDevFactor() As Double: SemiDevFactor = p_SemiDevFactor: End Property
+Public Property Let SemiDevFactor(ByVal value As Double): p_SemiDevFactor = value: End Property
+
+Public Property Get HistoricalMDDFactor() As Double: HistoricalMDDFactor = p_HistoricalMDDFactor: End Property
+Public Property Let HistoricalMDDFactor(ByVal value As Double): p_HistoricalMDDFactor = value: End Property
+
+Public Property Get FinalRiskFactor() As Double: FinalRiskFactor = p_FinalRiskFactor: End Property
+Public Property Let FinalRiskFactor(ByVal value As Double): p_FinalRiskFactor = value: End Property
+
 Private Sub Class_Initialize()
     Set p_Positions = CreateObject("Scripting.Dictionary")
     Set p_Weights = CreateObject("Scripting.Dictionary")
@@ -120,10 +141,16 @@ Public Function GetPosition(ByVal assetName As String) As PositionCls
     End If
 End Function
 
-Public Sub ApplyRiskOverlay(ByVal multiplier As Double)
+Public Sub ApplyRiskOverlay(riskDict As Object)
+    p_DDFactor = riskDict("DDFactor")
+    p_CVaRFactor = riskDict("CVaRFactor")
+    p_SemiDevFactor = riskDict("SemiDevFactor")
+    p_HistoricalMDDFactor = riskDict("HistoricalMDDFactor")
+    p_FinalRiskFactor = riskDict("FinalRiskFactor")
+
     Dim key As Variant
     For Each key In p_Weights.Keys
-        p_Weights(key) = p_Weights(key) * multiplier
+        p_Weights(key) = p_Weights(key) * p_FinalRiskFactor
     Next key
 End Sub
 

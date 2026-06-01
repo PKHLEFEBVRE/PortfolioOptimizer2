@@ -5,7 +5,7 @@ Option Explicit
 ' DOWNSIDE BETA & CVaR EQUITY ALLOCATION MODULE
 ' =========================================================================
 
-Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As SimulatedPortfolioCls) As Double
+Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As SimulatedPortfolioCls) As Object
     Dim DSBeta As Double, DDFactor As Double
     Dim CVaRFactor As Double, benchCVaR As Double, portCVaR As Double
     Dim SemiDevFactor As Double, benchSemiDev As Double, portSemiDev As Double
@@ -77,7 +77,16 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     End If
 
     finalRiskFactor = Application.WorksheetFunction.Average(DDFactor, CVaRFactor, SemiDevFactor, HistoricalMDDFactor)
-    ComputeFinalRiskFactor = finalRiskFactor
+
+    Dim resDict As Object
+    Set resDict = CreateObject("Scripting.Dictionary")
+    resDict.Add "DDFactor", DDFactor
+    resDict.Add "CVaRFactor", CVaRFactor
+    resDict.Add "SemiDevFactor", SemiDevFactor
+    resDict.Add "HistoricalMDDFactor", HistoricalMDDFactor
+    resDict.Add "FinalRiskFactor", finalRiskFactor
+
+    Set ComputeFinalRiskFactor = resDict
 End Function
 
 ' =========================================================================
