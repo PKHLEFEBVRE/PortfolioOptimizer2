@@ -31,16 +31,36 @@ Sub RunUpdateMatrices()
     Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
     If UBound(prices, 2) < 1 Then Exit Sub
 
+    ' Extract fund assets (skip benchmarks in first 2 columns)
+    Dim nTotal As Integer
+    nTotal = UBound(assetNames)
+    Dim nAssets As Integer
+    nAssets = nTotal - 2
+
+    Dim fundPrices() As Double, fundAssetNames() As String
+    ReDim fundPrices(1 To UBound(prices, 1), 1 To nAssets)
+    ReDim fundAssetNames(1 To nAssets)
+
+    Dim d As Long, j As Integer
+    For d = 1 To UBound(prices, 1)
+        For j = 1 To nAssets
+            fundPrices(d, j) = prices(d, j + 2)
+        Next j
+    Next d
+    For j = 1 To nAssets
+        fundAssetNames(j) = assetNames(j + 2)
+    Next j
+
     Dim strategies As Variant
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN") ', "MIN VAR", "KELLY"
 
-    Call SyncDashboardHeaders(dates, assetNames, strategies)
+    Call SyncDashboardHeaders(dates, fundAssetNames, strategies)
     Call UpdateConvictions
-    Call UpdateCurrentPrices(prices)
+    Call UpdateCurrentPrices(fundPrices)
 
     Dim logRets() As Double, meanRets() As Double
-    Call CalculateHistoricalStats(dates, prices, logRets, meanRets)
-    Call ProcessIndividualAssets(prices, dates, logRets, assetNames)
+    Call CalculateHistoricalStats(dates, fundPrices, logRets, meanRets)
+    Call ProcessIndividualAssets(fundPrices, dates, logRets, fundAssetNames)
 
     'MsgBox "Data Updated. Matrices Built.", vbInformation
     Application.ScreenUpdating = True
@@ -53,12 +73,43 @@ Sub RunAllSolvers()
     Dim prices() As Variant, dates() As Date, assetNames() As String
     Call GetHistoricalDataDatesAndNames(prices, dates, assetNames)
 
+    ' Split into Fund Assets vs Benchmark Assets
+    Dim nTotal As Integer
+    nTotal = UBound(assetNames)
+    Dim nAssets As Integer
+    nAssets = nTotal - 2
+
+    Dim fundPrices() As Double, fundAssetNames() As String
+    ReDim fundPrices(1 To UBound(prices, 1), 1 To nAssets)
+    ReDim fundAssetNames(1 To nAssets)
+
+    Dim benchPricesRaw() As Double, benchAssetNames() As String
+    ReDim benchPricesRaw(1 To UBound(prices, 1), 1 To 2)
+    ReDim benchAssetNames(1 To 2)
+
+    Dim d As Long, j As Integer
+    For d = 1 To UBound(prices, 1)
+        For j = 1 To 2
+            benchPricesRaw(d, j) = prices(d, j)
+        Next j
+        For j = 1 To nAssets
+            fundPrices(d, j) = prices(d, j + 2)
+        Next j
+    Next d
+    For j = 1 To 2
+        benchAssetNames(j) = assetNames(j)
+    Next j
+    For j = 1 To nAssets
+        fundAssetNames(j) = assetNames(j + 2)
+    Next j
+
+    ' Substitute the old arrays with the fund-only arrays so the rest of the solver math works seamlessly
     Dim logRets() As Double, meanRets() As Double
-    Call CalculateHistoricalStats(dates, prices, logRets, meanRets)
+    Call CalculateHistoricalStats(dates, fundPrices, logRets, meanRets)
 
     Dim covMat() As Double
     covMat = CalculateCovariance(logRets, meanRets)
-    Call OutputCorrelationMatrix(covMat, assetNames)
+    Call OutputCorrelationMatrix(covMat, fundAssetNames)
 
     Dim expReturns() As Double
     Dim lastDate As Date
@@ -70,8 +121,7 @@ Sub RunAllSolvers()
     Dim inputStart As Long
     inputStart = wsDash.Range("InputTableStart").Row + 1
 
-    Dim k As Integer, nAssets As Integer
-    nAssets = UBound(assetNames)
+    Dim k As Integer
     For k = 1 To nAssets
         wsDash.Cells(inputStart + k - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value = expReturns(k)
     Next k
@@ -84,7 +134,7 @@ Sub RunAllSolvers()
     Dim nStrat As Integer
     nStrat = UBound(strategies)
 
-    Call SyncSimWeightsHeaders(dates, assetNames, strategies)
+    Call SyncSimWeightsHeaders(dates, fundAssetNames, strategies)
 
     Dim minWeights() As Double, maxWeights() As Double
     ReDim minWeights(1 To nAssets)
@@ -136,17 +186,17 @@ Sub RunAllSolvers()
     Dim cacheIdx As Integer
     For cacheIdx = 1 To nAssets
         Dim pPrices() As Double, pDates() As Date
-        ReDim pPrices(1 To UBound(prices, 1))
+        ReDim pPrices(1 To UBound(fundPrices, 1))
         ReDim pDates(1 To UBound(dates))
         Dim iDay As Long
-        For iDay = 1 To UBound(prices, 1)
-            pPrices(iDay) = prices(iDay, cacheIdx)
+        For iDay = 1 To UBound(fundPrices, 1)
+            pPrices(iDay) = fundPrices(iDay, cacheIdx)
             pDates(iDay) = dates(iDay)
         Next iDay
 
         Dim cachePos As PositionCls
         Set cachePos = New PositionCls
-        cachePos.AssetName = assetNames(cacheIdx)
+        cachePos.AssetName = fundAssetNames(cacheIdx)
         cachePos.InitializeData pPrices, pDates
         cachePos.ComputeMetrics rf, conf
 
@@ -164,59 +214,56 @@ Sub RunAllSolvers()
 
         cachePos.ExpectedReturn = expReturns(cacheIdx)
 
-        masterPositions.Add assetNames(cacheIdx), cachePos
+        masterPositions.Add fundAssetNames(cacheIdx), cachePos
     Next cacheIdx
 
     Dim masterPortfolios As Object
     Set masterPortfolios = CreateObject("Scripting.Dictionary")
 
-    ' Extract Benchmark Returns for Downside Beta calculations, dynamically matched to portfolio Dates
-    Dim wsData As Worksheet
-    Set wsData = ThisWorkbook.Sheets("Data")
-    Dim benchCol As Long
-    benchCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column
-    Dim benchLastRow As Long
-    benchLastRow = wsData.Cells(wsData.Rows.Count, benchCol).End(xlUp).Row
+    ' Build the BENCHMARK Portfolio
+    Dim benchPort As SimulatedPortfolioCls
+    Set benchPort = New SimulatedPortfolioCls
+    benchPort.StrategyName = "BENCHMARK"
 
-    Dim benchRawDates() As Variant
-    Dim benchRawPrices() As Variant
-    ' Benchmark dates are 3 columns to the left of the computed benchmark column
-    benchRawDates = wsData.Range(wsData.Cells(2, benchCol - 3), wsData.Cells(benchLastRow, benchCol - 3)).Value
-    benchRawPrices = wsData.Range(wsData.Cells(2, benchCol), wsData.Cells(benchLastRow, benchCol)).Value
+    Dim benchMasterPos As Object
+    Set benchMasterPos = CreateObject("Scripting.Dictionary")
 
-    Dim dictBench As Object
-    Set dictBench = CreateObject("Scripting.Dictionary")
+    For cacheIdx = 1 To 2
+        ReDim pPrices(1 To UBound(benchPricesRaw, 1))
+        ReDim pDates(1 To UBound(dates))
+        For iDay = 1 To UBound(benchPricesRaw, 1)
+            pPrices(iDay) = benchPricesRaw(iDay, cacheIdx)
+            pDates(iDay) = dates(iDay)
+        Next iDay
+
+        Dim bPos As PositionCls
+        Set bPos = New PositionCls
+        bPos.AssetName = benchAssetNames(cacheIdx)
+        bPos.InitializeData pPrices, pDates
+        bPos.ComputeMetrics rf, conf
+
+        benchMasterPos.Add benchAssetNames(cacheIdx), bPos
+        benchPort.AddPosition benchAssetNames(cacheIdx), bPos
+    Next cacheIdx
+
+    ' Assign 50/50 weights
+    benchPort.SetEqualWeights
+    benchPort.Simulate
+
+    ' Extract benchRets to pass into ComputeMetrics for Downside Beta
+    Dim benchCurve() As Double
+    benchCurve = benchPort.EquityCurve
+    ReDim benchRets(1 To UBound(dates) - 1)
     Dim bIdx As Long
-    For bIdx = 1 To UBound(benchRawDates, 1)
-        If IsDate(benchRawDates(bIdx, 1)) Then
-            dictBench(CDate(benchRawDates(bIdx, 1))) = CDbl(benchRawPrices(bIdx, 1))
-        End If
-    Next bIdx
+
+    benchPort.ComputeMetrics rf, conf, benchRets
+    masterPortfolios.Add "BENCHMARK", benchPort
 
     ' Now build an aligned return array strictly matching the length of the portfolio dates (which matches logRets length)
     Dim benchRets() As Double
     ' logRets are size (1 to UBound(dates) - 1)
     ReDim benchRets(1 To UBound(dates) - 1)
 
-    For bIdx = 1 To UBound(dates) - 1
-        Dim dPrev As Date, dCurr As Date
-        dPrev = dates(bIdx)
-        dCurr = dates(bIdx + 1)
-
-        If dictBench.Exists(dPrev) And dictBench.Exists(dCurr) Then
-            Dim pBPrev As Double, pBCurr As Double
-            pBPrev = dictBench(dPrev)
-            pBCurr = dictBench(dCurr)
-
-            If pBPrev > 0 And pBCurr > 0 Then
-                benchRets(bIdx) = Log(pBCurr / pBPrev)
-            Else
-                benchRets(bIdx) = 0
-            End If
-        Else
-            benchRets(bIdx) = 0
-        End If
-    Next bIdx
 
     ' Inject benchRets back into positions
     Dim pKey As Variant
@@ -238,14 +285,14 @@ Sub RunAllSolvers()
         ' 1. Add pre-cached positions
         Dim jPos As Integer
         For jPos = 1 To nAssets
-            simPort.AddPosition assetNames(jPos), masterPositions(assetNames(jPos))
+            simPort.AddPosition fundAssetNames(jPos), masterPositions(fundAssetNames(jPos))
         Next jPos
 
         ' 2. Initialize with equal weights
         simPort.SetEqualWeights
 
         ' 3. Optimize the weights based on strategy
-        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, assetNames
+        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights, nAssets, fundAssetNames
 
 
 
@@ -278,7 +325,7 @@ Sub RunAllSolvers()
         ReDim wArr(1 To 1, 1 To nAssets)
         Dim idx As Integer
         For idx = 1 To nAssets
-            wArr(1, idx) = simPort.GetWeight(assetNames(idx))
+            wArr(1, idx) = simPort.GetWeight(fundAssetNames(idx))
         Next idx
 
         Call OutputMetricsToRow(i - 1, CStr(strategies(i)), mRet, mVol, mSharpe, mMDD, mLen, mVaR, wArr, "StrategyTableStart", True)
@@ -329,14 +376,14 @@ Sub RunAllSolvers()
 
     ' --- POST-SIMULATION RISK OVERLAY ---
     Dim riskMultiplier As Double
-    riskMultiplier = allocationLogic.ComputeFinalRiskFactor()
+    riskMultiplier = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"))
 
     Dim pKey As Variant
     For Each pKey In masterPortfolios.Keys
         Dim p As SimulatedPortfolioCls
         Set p = masterPortfolios(pKey)
 
-        If p.StrategyName <> "EQUAL WEIGHT" And p.StrategyName <> "MEAN" Then
+        If p.StrategyName <> "EQUAL WEIGHT" And p.StrategyName <> "MEAN" And p.StrategyName <> "BENCHMARK" Then
             p.ApplyRiskOverlay riskMultiplier
 
             ' Re-simulate to calculate the depressed equity curve
@@ -356,7 +403,7 @@ Sub RunAllSolvers()
 
     ' Generate the new unified Dashboard
     Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
-    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios, assetNames)
+    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios, fundAssetNames)
 
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic

@@ -35,3 +35,15 @@ To view the new Positions Dashboard:
 
 19. Re-import `Main.bas` (Fixed the `Subscript Out Of Range` error by perfectly aligning the dynamic benchmark dates array to the portfolio dates array before calculating log returns).
 20. Re-import `allocationLogic.bas` (Fixed a silent error where the DownsideBeta calculation was accidentally grabbing columns 5 and 8 which are no longer the benchmark after the Data sheets merge).
+
+21. Replace `DataUtils.bas` (It correctly outputs both Benchmark symbols and Fund assets to a single "Data" sheet and computes the equally weighted benchmark seamlessly in memory during backfilling alignment).
+22. Replace `Main.bas` (Properly wires up the newly perfectly aligned "BENCHMARK" strategy into the execution pipeline and passes it to the risk factor allocation script).
+23. Replace `allocationLogic.bas` (Vastly simplified because it no longer needs to blindly parse and align raw sheet data; it now leverages the aligned Equity Curves directly from the object-oriented "MEAN" and "BENCHMARK" portfolios).
+
+24. Re-import `Main.bas` (Removed duplicate/unused variables that caused compilation errors).
+25. Re-import `DataUtils.bas` (Updated the API fetch to correctly place the Benchmark assets in the first columns of the "Data" sheet, rather than appending them at the end, ensuring array mapping aligns perfectly).
+
+26. Re-import `Main.bas` (Fixed the `Duplicate declaration in current scope` error by removing the duplicate `Dim benchRets() As Double`, and fixed the `Variable not defined` error by completely removing the abandoned `dictBench` logic).
+27. Re-import `DataUtils.bas` (Replaced the entire file with a pristine syntactic copy to resolve the `Sub or Function not defined` compile error caused by leftover commented-out code bodies).
+
+28. Replace `Main.bas` one final time. I fixed a bug in `RunUpdateMatrices` where the dashboard headers would crash due to not excluding the benchmark assets from the array size count, and I re-instated the missing loop to calculate the `benchRets` log returns array so that `Downside Beta` correctly prints out!

@@ -16,16 +16,7 @@ Function updateAllPriceHistoryFromInfin()
     i = 1
     ws.Activate
 
-    ' Fetch fund assets
-    For Each p In equityPositions
-        Set pos = equityPositions(p)
-        ws.Cells(1, i) = pos.posInstrument.Symbol
-        ws.Cells(1, i + 1) = pos.posInstrument.Name
-        ws.Cells(2, i).Formula2 = "=INFIN.GETSECURITYHISTORY(" & ws.Cells(1, i).Address & ")"
-        i = i + 2
-    Next p
-
-    ' Fetch benchmark assets on the same sheet
+    ' Fetch benchmark assets on the same sheet FIRST (Columns 1-4)
     Dim symbols As Variant, names As Variant
     symbols = Array("", "SPX", "", "RTY")
     names = Array("", "S&P 500 Index", "", "Russel 2000 Index")
@@ -38,13 +29,21 @@ Function updateAllPriceHistoryFromInfin()
         i = i + 2
     Next k
 
+    ' Fetch fund assets AFTER the benchmark
+    For Each p In equityPositions
+        Set pos = equityPositions(p)
+        ws.Cells(1, i) = pos.posInstrument.Symbol
+        ws.Cells(1, i + 1) = pos.posInstrument.Name
+        ws.Cells(2, i).Formula2 = "=INFIN.GETSECURITYHISTORY(" & ws.Cells(1, i).Address & ")"
+        i = i + 2
+    Next p
+
     ThisWorkbook.Sheets("Dashboard").Range("G3").Value = CInt(4 * equityPositions.Count / 5)
 
 End Function
 
 Sub AlignSecurityDataRefactored()
     Dim wsInput As Worksheet
-    Dim wsBench As Worksheet
     Dim lastCol As Long
     Dim startDate As Date
     Dim masterDates() As Date
@@ -53,79 +52,116 @@ Sub AlignSecurityDataRefactored()
 
     Application.ScreenUpdating = False
 
-    ' Set your starting parameters
-    ' You can eventually link this to a cell, e.g., wsInput.Range("A1").Value
     startDate = ThisWorkbook.Sheets("Dashboard").Range("D2").Value
-
-    ComputeEquallyWeightedBenchmark
-
     Set wsInput = ThisWorkbook.Sheets("Data")
-    Set wsBench = ThisWorkbook.Sheets("Data")
 
-    ' ---------------------------------------------------------
-    ' PHASE 1.1: Extract Benchmark Timeline and Prices
-    ' ---------------------------------------------------------
-    ' This generates our Master Date Array and grabs benchmark prices
-    Set dictBenchPrices = ExtractBenchmarkData(wsBench, startDate, masterDates)
+    lastCol = wsInput.Cells(1, wsInput.Columns.Count).End(xlToLeft).Column
+    Set dictPrices = ExtractAssetData(wsInput, lastCol)
 
-    ' Check if we actually found dates
-    If (Not masterDates) = -1 Then ' Fast way to check if array is uninitialized
-        MsgBox "No benchmark dates found on or after the start date.", vbExclamation
+    Set dictBenchPrices = CreateObject("Scripting.Dictionary")
+    Dim assetNames() As Variant
+    assetNames = dictPrices.Keys()
+
+    If UBound(assetNames) < 1 Then
+        MsgBox "Not enough benchmark assets found.", vbExclamation
         Application.ScreenUpdating = True
         Exit Sub
     End If
 
-    ' ---------------------------------------------------------
-    ' PHASE 1.2: Extract Asset Data (No more tallying)
-    ' ---------------------------------------------------------
-    lastCol = wsInput.Cells(1, wsInput.Columns.count).End(xlToLeft).Column
-    ' lastCol currently includes 4 columns of the 2 bench assets + 4 columns of the computed benchmark
-    ' However, ComputeEquallyWeightedBenchmark runs BEFORE ExtractAssetData.
-    ' Let's pass the correct boundary for just the fund assets.
-    Dim assetBoundary As Long
-    assetBoundary = wsInput.Cells(1, wsInput.Columns.Count).End(xlToLeft).Column - 8
-    Set dictPrices = ExtractAssetData(wsInput, assetBoundary)
+    Dim b1 As String, b2 As String
+    b1 = assetNames(0)
+    b2 = assetNames(1)
 
-    ' ---------------------------------------------------------
-    ' PHASES 2, 3 & 4: Overlap, Beta Calculation, and Backfilling
-    ' ---------------------------------------------------------
+    Dim dictB1 As Object, dictB2 As Object
+    Set dictB1 = dictPrices(b1)
+    Set dictB2 = dictPrices(b2)
+
+    Dim dKey As Variant
+    Dim count As Long
+    count = 0
+
+    Dim base1 As Double, base2 As Double
+    Dim isBaseSet As Boolean
+    isBaseSet = False
+
+    Dim allDates As Object
+    Set allDates = CreateObject("Scripting.Dictionary")
+    For Each dKey In dictB1.Keys
+        If dictB2.Exists(dKey) Then
+            If CDate(dKey) >= startDate Then
+                If Not allDates.Exists(CDate(dKey)) Then
+                    allDates.Add CDate(dKey), 1
+                End If
+            End If
+        End If
+    Next dKey
+
+    If allDates.Count = 0 Then
+        MsgBox "No overlapping benchmark dates found on or after the start date.", vbExclamation
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+
+    Dim arrD() As Date
+    ReDim arrD(1 To allDates.Count)
+    count = 0
+    For Each dKey In allDates.Keys
+        count = count + 1
+        arrD(count) = CDate(dKey)
+    Next dKey
+
+    SortDatesAscending arrD
+    ReDim masterDates(1 To UBound(arrD))
+    For count = 1 To UBound(arrD)
+        masterDates(count) = arrD(count)
+    Next count
+
+    For count = 1 To UBound(masterDates)
+        If Not isBaseSet Then
+            base1 = dictB1(masterDates(count))
+            base2 = dictB2(masterDates(count))
+            isBaseSet = True
+        End If
+
+        Dim p1 As Double, p2 As Double
+        p1 = dictB1(masterDates(count))
+        p2 = dictB2(masterDates(count))
+
+        Dim val1 As Double, val2 As Double
+        val1 = (p1 / base1) * 100
+        val2 = (p2 / base2) * 100
+
+        dictBenchPrices.Add masterDates(count), (val1 + val2) / 2
+    Next count
+
     Dim assetKey As Variant
     Dim secDict As Object
     Dim firstAssetDate As Date
-    Dim assetBeta As Double, assetBetas As Dictionary
-    Dim dateKey As Variant
+    Dim assetBeta As Double, assetBetas As Object
 
-    Set assetBetas = New Dictionary
+    Set assetBetas = CreateObject("Scripting.Dictionary")
 
     For Each assetKey In dictPrices.Keys
-        Set secDict = dictPrices(assetKey)
+        If assetKey <> b1 And assetKey <> b2 Then
+            Set secDict = dictPrices(assetKey)
 
-        ' Find the earliest available date for this specific asset
-        firstAssetDate = #12/31/9999#
-        For Each dateKey In secDict.Keys
-            If CDate(dateKey) < firstAssetDate Then
-                firstAssetDate = CDate(dateKey)
+            firstAssetDate = #12/31/9999#
+            For Each dKey In secDict.Keys
+                If CDate(dKey) < firstAssetDate Then
+                    firstAssetDate = CDate(dKey)
+                End If
+            Next dKey
+
+            If firstAssetDate > startDate Then
+                assetBeta = CalculateLogBeta(masterDates, dictBenchPrices, secDict, firstAssetDate)
+                assetBetas.Add assetKey, assetBeta
+                BackfillAssetPrices secDict, masterDates, dictBenchPrices, startDate, firstAssetDate, assetBeta
             End If
-        Next dateKey
-
-        ' If the asset's first date is after our master start date, we need to backfill
-        If firstAssetDate > startDate Then
-
-            ' Phase 3: Calculate the Asset's Beta against the Benchmark
-            assetBeta = CalculateLogBeta(masterDates, dictBenchPrices, secDict, firstAssetDate)
-            assetBetas.Add assetKey, assetBeta
-            ' Phase 4: Generate Prices Backwards (CALLING THE FUNCTION)
-            BackfillAssetPrices secDict, masterDates, dictBenchPrices, startDate, firstAssetDate, assetBeta
-
         End If
     Next assetKey
 
-    ' ---------------------------------------------------------
-    ' PHASE 5: Output the Unified Data
-    ' ---------------------------------------------------------
     WriteFundAlignedDataWithArray wsInput, masterDates, dictPrices
 
-    ComputeEquallyWeightedBenchmark
     RunUpdateMatrices
     ThisWorkbook.Sheets("Dashboard").Activate
 
@@ -133,7 +169,7 @@ Sub AlignSecurityDataRefactored()
 
     Dim betaString As String
     betaString = ""
-    If assetBetas.count > 0 Then
+    If assetBetas.Count > 0 Then
         betaString = vbCr & vbCr & "Backfilling Beta used :" & vbCr
         For Each assetKey In assetBetas
             betaString = betaString & assetKey & " : " & Round(assetBetas(assetKey), 2) & vbCr
@@ -142,47 +178,6 @@ Sub AlignSecurityDataRefactored()
     MsgBox "Data aligned and backfilled successfully!" & vbCr & "From " & masterDates(1) & vbCr & "To " & masterDates(UBound(masterDates)) & betaString, vbInformation
 
 End Sub
-
-'
-'Sub AlignSecurityDataRefactored()
-'
-'    ComputeEquallyWeightedBenchmark
-'
-'    Dim wsInput As Worksheet
-'    Dim lastCol As Long, secCount As Long
-'    Dim dictDates As Object, dictPrices As Object
-'    Dim arrDates() As Date
-'
-'    Set wsInput = ActiveSheet
-'    lastCol = wsInput.Cells(1, wsInput.Columns.count).End(xlToLeft).Column
-'    secCount = lastCol / 2 ' Assuming 2 columns per security (Date, Price)
-'
-'    Set dictDates = CreateObject("Scripting.Dictionary")
-'
-'    Application.ScreenUpdating = False
-'
-'    ' STEP 1: Extract data using Arrays and Asset Names as Keys
-'    Set dictPrices = ExtractData(wsInput, lastCol, dictDates)
-'
-'    ' STEP 2: Find and sort common dates
-'    If Not GetFundCommonDates(dictDates, secCount, arrDates) Then
-'        MsgBox "No common dates found across all securities.", vbExclamation
-'        Application.ScreenUpdating = True
-'        Exit Sub
-'    End If
-'
-'    ' STEP 3: Write to the final sheet via an Output Array
-'    WriteFundAlignedDataWithArray wsInput, arrDates, dictPrices
-'
-'    ComputeEquallyWeightedBenchmark
-'
-'    Application.ScreenUpdating = True
-'    MsgBox "Data aligned successfully!" & vbCr & "Found " & UBound(arrDates) + 1 & " common dates. Range :" & vbCr & vbCr & "From " & arrDates(LBound(arrDates)) & vbCr & "To " & arrDates(UBound(arrDates)), vbInformation
-'
-'    RunUpdateMatrices
-'    ThisWorkbook.Sheets("Dashboard").Activate
-'End Sub
-
 
 Public Function GetEquityPositionsFromFund() As Dictionary
 
@@ -232,59 +227,6 @@ Private Function GetPortfolio() As Portfolio
 
 End Function
 
-
-' =====================================================================
-' HELPER FUNCTIONS FOR PHASE 1
-' =====================================================================
-
-Private Function ExtractBenchmarkData(ws As Worksheet, startDate As Date, ByRef arrDates() As Date) As Object
-    Dim dictBench As Object
-    Dim lastRow As Long
-    Dim srcArray As Variant
-    Dim i As Long, count As Long
-    Dim d As Date, p As Double
-    Dim lastCol As Long
-
-    Set dictBench = CreateObject("Scripting.Dictionary")
-
-    ' The equally weighted benchmark is appended at the very end of the Data sheet (lastCol)
-    lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-
-    lastRow = ws.Cells(ws.Rows.Count, lastCol - 3).End(xlUp).Row
-    If lastRow < 2 Then GoTo EarlyExit
-
-    ' Grab the computed Benchmark columns (Date is lastCol-3, Benchmark is lastCol)
-    srcArray = ws.Range(ws.Cells(2, lastCol - 3), ws.Cells(lastRow, lastCol)).Value
-
-    ReDim arrDates(1 To UBound(srcArray, 1))
-    count = 0
-
-    For i = 1 To UBound(srcArray, 1)
-        If IsDate(srcArray(i, 1)) Then
-            d = CDate(srcArray(i, 1))
-            If d >= startDate Then
-                p = srcArray(i, 4)
-                If Not dictBench.Exists(d) Then
-                    dictBench.Add d, p
-                    count = count + 1
-                    arrDates(count) = d
-                End If
-            End If
-        End If
-    Next i
-
-    If count > 0 Then
-        ReDim Preserve arrDates(1 To count)
-        SortDatesAscending arrDates
-    Else
-        Erase arrDates
-    End If
-
-EarlyExit:
-    Set ExtractBenchmarkData = dictBench
-End Function
-
-
 Private Function ExtractAssetData(ws As Worksheet, lastCol As Long) As Object
     Dim dictPrices As Object, secDict As Object
     Dim i As Long, j As Long, lastRow As Long
@@ -295,7 +237,7 @@ Private Function ExtractAssetData(ws As Worksheet, lastCol As Long) As Object
     Set dictPrices = CreateObject("Scripting.Dictionary")
 
     For i = 1 To lastCol Step 2
-        lastRow = ws.Cells(ws.Rows.count, i).End(xlUp).Row
+        lastRow = ws.Cells(ws.Rows.Count, i).End(xlUp).Row
 
         If lastRow >= 2 Then
             assetName = ws.Cells(1, i + 1).Value
@@ -306,7 +248,6 @@ Private Function ExtractAssetData(ws As Worksheet, lastCol As Long) As Object
                 dateVal = srcArray(j, 1)
                 priceVal = srcArray(j, 2)
 
-                ' Store the price if it's a valid date and number
                 If IsDate(dateVal) And IsNumeric(priceVal) Then
                     If Not secDict.Exists(dateVal) Then
                         secDict.Add dateVal, priceVal
@@ -322,7 +263,6 @@ Private Function ExtractAssetData(ws As Worksheet, lastCol As Long) As Object
 End Function
 
 Private Sub SortDatesAscending(ByRef arr() As Date)
-    ' Standard Bubble Sort for dates
     Dim i As Long, j As Long
     Dim temp As Date
     For i = LBound(arr) To UBound(arr) - 1
@@ -336,10 +276,6 @@ Private Sub SortDatesAscending(ByRef arr() As Date)
     Next i
 End Sub
 
-' =====================================================================
-' HELPER FUNCTIONS FOR PHASES 2 & 3
-' =====================================================================
-
 Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Object, dictAssetPrices As Object, firstAssetDate As Date) As Double
     Dim i As Long, count As Long
     Dim pAsset1 As Double, pAsset0 As Double
@@ -349,7 +285,6 @@ Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Obje
     Dim retAsset As Double, retBench As Double
     Dim sumAsset As Double, sumBench As Double
 
-    ' Arrays to temporarily hold the valid returns
     Dim arrRetA() As Double, arrRetB() As Double
     ReDim arrRetA(1 To UBound(masterDates))
     ReDim arrRetB(1 To UBound(masterDates))
@@ -358,9 +293,6 @@ Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Obje
     sumAsset = 0
     sumBench = 0
 
-    ' -------------------------------------------------------------
-    ' PASS 1: Calculate Log Returns and Sums
-    ' -------------------------------------------------------------
     For i = 2 To UBound(masterDates)
         d1 = masterDates(i)
         d0 = masterDates(i - 1)
@@ -377,7 +309,6 @@ Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Obje
                 If pAsset0 > 0 And pBench0 > 0 And pAsset1 > 0 And pBench1 > 0 Then
                     count = count + 1
 
-                    ' Note: In native VBA, Log() is the Natural Logarithm (Ln)
                     retAsset = Log(pAsset1 / pAsset0)
                     retBench = Log(pBench1 / pBench0)
 
@@ -391,9 +322,6 @@ Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Obje
         End If
     Next i
 
-    ' -------------------------------------------------------------
-    ' PASS 2: Calculate NATIVE Covariance / Variance (Beta)
-    ' -------------------------------------------------------------
     If count >= 2 Then
         Dim meanA As Double, meanB As Double
         Dim covSum As Double, varSum As Double
@@ -411,17 +339,12 @@ Private Function CalculateLogBeta(masterDates() As Date, dictBenchPrices As Obje
         If varSum > 0 Then
             CalculateLogBeta = covSum / varSum
         Else
-            CalculateLogBeta = 1 ' Default if benchmark variance is literally zero
+            CalculateLogBeta = 1
         End If
     Else
-        CalculateLogBeta = 1 ' Default if not enough overlapping data points
+        CalculateLogBeta = 1
     End If
 End Function
-
-
-' =====================================================================
-' HELPER FUNCTION FOR PHASE 4
-' =====================================================================
 
 Private Sub BackfillAssetPrices(ByRef secDict As Object, masterDates() As Date, dictBenchPrices As Object, startDate As Date, firstAssetDate As Date, assetBeta As Double)
     Dim i As Long, startIndex As Long
@@ -430,7 +353,6 @@ Private Sub BackfillAssetPrices(ByRef secDict As Object, masterDates() As Date, 
     Dim pAsset1 As Double, pAsset0 As Double
     Dim rBench As Double, rProxy As Double
 
-    ' 1. Find where the asset's real history begins on the Master Timeline
     For i = 1 To UBound(masterDates)
         If masterDates(i) = firstAssetDate Then
             startIndex = i
@@ -438,34 +360,24 @@ Private Sub BackfillAssetPrices(ByRef secDict As Object, masterDates() As Date, 
         End If
     Next i
 
-    ' If we couldn't find it, or it's the very first date, exit
     If startIndex <= 1 Then Exit Sub
 
-    ' 2. Work backwards day-by-day
     For i = startIndex To 2 Step -1
         d1 = masterDates(i)
         d0 = masterDates(i - 1)
 
-        ' Stop if we go before the requested start date
         If d0 < startDate Then Exit For
 
-        ' Ensure we have the necessary data points to calculate
         If dictBenchPrices.Exists(d1) And dictBenchPrices.Exists(d0) And secDict.Exists(d1) Then
             pBench1 = dictBenchPrices(d1)
             pBench0 = dictBenchPrices(d0)
             pAsset1 = secDict(d1)
 
             If pBench1 > 0 And pBench0 > 0 Then
-                ' Calculate log return of benchmark
                 rBench = Application.WorksheetFunction.Ln(pBench1 / pBench0)
-
-                ' Apply beta to get proxy return
                 rProxy = assetBeta * rBench
-
-                ' Reverse the log return to find yesterday's price
                 pAsset0 = pAsset1 / Exp(rProxy)
 
-                ' Inject the newly calculated price into the asset's dictionary
                 If Not secDict.Exists(d0) Then
                     secDict.Add d0, pAsset0
                 End If
@@ -473,11 +385,6 @@ Private Sub BackfillAssetPrices(ByRef secDict As Object, masterDates() As Date, 
         End If
     Next i
 End Sub
-
-
-' =====================================================================
-' UPDATED PHASE 5: STRICT INTERSECTION OUTPUT
-' =====================================================================
 
 Private Sub WriteFundAlignedDataWithArray(wsInput As Worksheet, masterDates() As Date, dictPrices As Object)
     Dim wsOutput As Worksheet
@@ -492,50 +399,38 @@ Private Sub WriteFundAlignedDataWithArray(wsInput As Worksheet, masterDates() As
 
     assetNames = dictPrices.Keys
 
-    ' Dimension a temporary array to hold the dates that survive the filter
     ReDim validDates(1 To UBound(masterDates))
     validDateCount = 0
 
-    ' ---------------------------------------------------------
-    ' 1. Filter the Master Dates for Strict Overlap
-    ' ---------------------------------------------------------
     For r = 1 To UBound(masterDates)
         dateKey = masterDates(r)
         allExist = True
 
-        ' Check if every single asset has this date
         For c = 0 To UBound(assetNames)
             If Not dictPrices(assetNames(c)).Exists(dateKey) Then
                 allExist = False
-                Exit For ' Stop checking if even one asset is missing it
+                Exit For
             End If
         Next c
 
-        ' If all assets have a price, keep the date
         If allExist Then
             validDateCount = validDateCount + 1
             validDates(validDateCount) = dateKey
         End If
     Next r
 
-    ' Safety check in case the filter removes everything
     If validDateCount = 0 Then
         MsgBox "After alignment, no dates exist where ALL assets have a price.", vbExclamation
         Exit Sub
     End If
 
-    ' ---------------------------------------------------------
-    ' 2. Build the Final Output Array
-    ' ---------------------------------------------------------
-    ReDim outArray(1 To validDateCount + 1, 1 To dictPrices.count + 1)
+    ReDim outArray(1 To validDateCount + 1, 1 To dictPrices.Count + 1)
 
-    ' Headers
     outArray(1, 1) = "Aligned Date"
     For c = 0 To UBound(assetNames)
         outArray(1, c + 2) = assetNames(c)
     Next c
 
-    ' Dates and Prices
     For r = 1 To validDateCount
         dateKey = validDates(r)
         outArray(r + 1, 1) = dateKey
@@ -545,284 +440,11 @@ Private Sub WriteFundAlignedDataWithArray(wsInput As Worksheet, masterDates() As
         Next c
     Next r
 
-    ' ---------------------------------------------------------
-    ' 3. Drop Array on Sheet
-    ' ---------------------------------------------------------
     Set wsOutput = ThisWorkbook.Sheets("PriceHistory")
     wsOutput.Cells.ClearContents
 
-    ' Resize target block to perfectly match the filtered array size
-    wsOutput.Cells(1, 1).Resize(validDateCount + 1, dictPrices.count + 1).Value = outArray
+    wsOutput.Cells(1, 1).Resize(validDateCount + 1, dictPrices.Count + 1).Value = outArray
 
-    ' Clean up formatting
     wsOutput.Columns(1).NumberFormat = "dd/mm/yyyy"
     wsOutput.Columns.AutoFit
-End Sub
-
-'Private Function ExtractData(ws As Worksheet, lastCol As Long, ByRef dictDates As Object) As Object
-'    Dim dictPrices As Object, secDict As Object
-'    Dim i As Long, j As Long, lastRow As Long
-'    Dim dateVal As Variant, priceVal As Variant
-'    Dim assetName As String
-'    Dim srcArray As Variant
-'
-'    Set dictPrices = CreateObject("Scripting.Dictionary")
-'
-'    For i = 1 To lastCol Step 2
-'        lastRow = ws.Cells(ws.Rows.count, i).End(xlUp).Row
-'
-'        If lastRow >= 2 Then
-'            ' Use the Price Column Header (Column i + 1) as the Asset Name key
-'            assetName = ws.Cells(1, i + 1).Value
-'            Set secDict = CreateObject("Scripting.Dictionary")
-'
-'            ' Snatch data into memory array
-'            srcArray = ws.Range(ws.Cells(2, i), ws.Cells(lastRow, i + 1)).Value
-'
-'            For j = 1 To UBound(srcArray, 1)
-'                dateVal = srcArray(j, 1)
-'                priceVal = srcArray(j, 2)
-'
-'                If IsDate(dateVal) Then
-'                    ' Tally matching dates across assets
-'                    If Not dictDates.Exists(dateVal) Then
-'                        dictDates.Add dateVal, 1
-'                    Else
-'                        dictDates(dateVal) = dictDates(dateVal) + 1
-'                    End If
-'
-'                    ' Store price mapped to date
-'                    If Not secDict.Exists(dateVal) Then
-'                        secDict.Add dateVal, priceVal
-'                    End If
-'                End If
-'            Next j
-'
-'            ' Store the asset dictionary using the Asset Name as the main key
-'            dictPrices.Add assetName, secDict
-'        End If
-'    Next i
-'
-'    Set ExtractData = dictPrices
-'End Function
-'
-'
-'
-'Private Function GetFundCommonDates(dictDates As Object, secCount As Long, ByRef arrDates() As Date) As Boolean
-'    Dim key As Variant
-'    Dim count As Long
-'    Dim tempDate As Date
-'    Dim m As Long, n As Long
-'
-'    count = 0
-'    For Each key In dictDates.Keys
-'        If dictDates(key) = secCount Then
-'            ReDim Preserve arrDates(count)
-'            arrDates(count) = CDate(key)
-'            count = count + 1
-'        End If
-'    Next key
-'
-'    If count = 0 Then
-'        GetFundCommonDates = False
-'        Exit Function
-'    End If
-'
-'    ' Quick Bubble Sort (Oldest to Newest)
-'    For m = LBound(arrDates) To UBound(arrDates) - 1
-'        For n = m + 1 To UBound(arrDates)
-'            If arrDates(m) > arrDates(n) Then
-'                tempDate = arrDates(m)
-'                arrDates(m) = arrDates(n)
-'                arrDates(n) = tempDate
-'            End If
-'        Next n
-'    Next m
-'
-'    GetFundCommonDates = True
-'End Function
-
-
-
-'Private Sub WriteFundAlignedDataWithArray(wsInput As Worksheet, arrDates() As Date, dictPrices As Object)
-'    Dim wsOutput As Worksheet
-'    Dim outArray As Variant
-'    Dim assetNames As Variant
-'    Dim totalRows As Long, totalCols As Long
-'    Dim r As Long, c As Long
-'    Dim dateKey As Date
-'
-'    ' Extract asset names keys out of our dictionary
-'    assetNames = dictPrices.Keys
-'
-'    totalRows = UBound(arrDates) + 2 ' +1 for 0-index, +1 for Header row
-'    totalCols = dictPrices.count + 1 ' +1 for the unified Date column
-'
-'    ' Dimensions of output matrix: (Rows, Columns)
-'    ReDim outArray(1 To totalRows, 1 To totalCols)
-'
-'    ' 1. Populate Headers in the array matrix
-'    outArray(1, 1) = "Aligned Date"
-'    For c = 0 To UBound(assetNames)
-'        outArray(1, c + 2) = assetNames(c)
-'    Next c
-'
-'    ' 2. Populate Dates and Prices in the array matrix
-'    For r = 0 To UBound(arrDates)
-'        dateKey = arrDates(r)
-'        outArray(r + 2, 1) = dateKey ' Date column
-'
-'        ' Retrieve prices using Asset Name keys
-'        For c = 0 To UBound(assetNames)
-'            outArray(r + 2, c + 2) = dictPrices(assetNames(c))(dateKey)
-'        Next c
-'    Next r
-'
-'    ' 3. Add worksheet and drop the array on the sheet all at once
-'    Set wsOutput = ThisWorkbook.Sheets("PriceHistory")
-'    wsOutput.Cells.ClearContents
-'
-'    ' Resize target block to perfectly match array size
-'    wsOutput.Cells(1, 1).Resize(totalRows, totalCols).Value = outArray
-'
-'    ' Clean up formatting
-'    wsOutput.Columns(1).NumberFormat = "dd/mm/yyyy" ' Enforces neat dates
-'    wsOutput.Columns.AutoFit
-'
-'End Sub
-
-
-Private Sub ComputeEquallyWeightedBenchmark()
-    Dim wsData As Worksheet
-    Dim arrSec1 As Variant, arrSec2 As Variant
-    Dim dictSec1 As Object
-    Dim outArr As Variant
-    Dim outRows As Long
-
-    Set wsData = ThisWorkbook.Sheets("Data")
-
-    ' SPX and RTY are the last 4 columns currently filled by updateAllPriceHistoryFromInfin
-    Dim lastCol As Long
-    lastCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column
-
-    ' If we already appended the benchmark previously, clear it to recalculate clean
-    If wsData.Cells(1, lastCol).Value = "Equally Weighted Benchmark" Then
-        wsData.Range(wsData.Cells(1, lastCol - 3), wsData.Cells(100000, lastCol)).ClearContents
-        lastCol = wsData.Cells(1, wsData.Columns.Count).End(xlToLeft).Column
-    End If
-
-    Dim col1 As String, col2 As String, col3 As String, col4 As String
-    col1 = Split(wsData.Cells(1, lastCol - 3).Address, "$")(1)
-    col2 = Split(wsData.Cells(1, lastCol - 2).Address, "$")(1)
-    col3 = Split(wsData.Cells(1, lastCol - 1).Address, "$")(1)
-    col4 = Split(wsData.Cells(1, lastCol).Address, "$")(1)
-
-    arrSec1 = LoadRangeToArray(wsData, col1, col2)
-    arrSec2 = LoadRangeToArray(wsData, col3, col4)
-
-    Set dictSec1 = BuildDictionary(arrSec1)
-    If dictSec1.count = 0 Then
-        MsgBox "No valid data found for Security 1.", vbCritical
-        Exit Sub
-    End If
-
-    outArr = ProcessAndCalculate(dictSec1, arrSec2, outRows)
-
-    If outRows = 0 Then
-        MsgBox "No common dates found between the two securities.", vbExclamation
-        Exit Sub
-    End If
-
-    Call OutputResults(outArr, outRows, wsData, lastCol + 1)
-End Sub
-
-
-' ==========================================
-' HELPER FUNCTIONS
-' ==========================================
-
-' Dynamically finds the last row and loads two columns into a 2D memory array
-Private Function LoadRangeToArray(ws As Worksheet, col1 As String, col2 As String) As Variant
-    Dim lastRow As Long
-    lastRow = ws.Cells(ws.Rows.count, col1).End(xlUp).Row
-    If lastRow < 2 Then lastRow = 2 ' Failsafe for empty columns
-
-    LoadRangeToArray = ws.Range(ws.Cells(2, col1), ws.Cells(lastRow, col2)).Value
-End Function
-
-' Converts a 2D array (Date/Price) into a Dictionary for lightning-fast matching
-Private Function BuildDictionary(arr As Variant) As Object
-    Dim dict As Object
-    Dim i As Long
-
-    Set dict = CreateObject("Scripting.Dictionary")
-
-    If Not IsEmpty(arr) Then
-        For i = 1 To UBound(arr)
-            ' Ensure we are looking at a valid date and a valid number
-            If IsDate(arr(i, 1)) And IsNumeric(arr(i, 2)) Then
-                dict(arr(i, 1)) = arr(i, 2)
-            End If
-        Next i
-    End If
-
-    Set BuildDictionary = dict
-End Function
-
-' Loops through Security 2, checks the Dictionary for matches, and calculates the benchmark
-Private Function ProcessAndCalculate(dict As Object, arr2 As Variant, ByRef outRows As Long) As Variant
-    Dim tempArr() As Variant
-    Dim i As Long
-    Dim dateVal As Variant, price1 As Double, price2 As Double
-    Dim base1 As Double, base2 As Double
-    Dim isBaseSet As Boolean
-
-    ' Max possible size is the length of array 2, spanning 6 columns
-    ReDim tempArr(1 To UBound(arr2), 1 To 4)
-    outRows = 0
-    isBaseSet = False
-
-    For i = 1 To UBound(arr2)
-        dateVal = arr2(i, 1)
-
-        If dict.Exists(dateVal) And IsNumeric(arr2(i, 2)) Then
-            outRows = outRows + 1
-            price1 = dict(dateVal)
-            price2 = arr2(i, 2)
-
-            ' Assign Raw Data
-            tempArr(outRows, 1) = dateVal
-            'tempArr(outRows, 2) = price1
-            'tempArr(outRows, 3) = price2
-
-            ' Set the Base 100 starting prices on the very first matched date
-            If Not isBaseSet Then
-                base1 = price1
-                base2 = price2
-                isBaseSet = True
-            End If
-
-            ' Calculate Normalized Prices and Benchmark
-            tempArr(outRows, 2) = (price1 / base1) * 100
-            tempArr(outRows, 3) = (price2 / base2) * 100
-            tempArr(outRows, 4) = (tempArr(outRows, 2) + tempArr(outRows, 3)) / 2
-        End If
-    Next i
-
-    ' Return the populated array
-    ProcessAndCalculate = tempArr
-End Function
-
-' Generates the final worksheet, drops the array, and applies formatting
-Private Sub OutputResults(outArr As Variant, outRows As Long, wsOut As Worksheet, startCol As Long)
-    ' Write Headers dynamically to the right of the existing data
-    wsOut.Cells(1, startCol).Resize(1, 4).Value = Array("Common Date", "Norm Price 1 (Base 100)", "Norm Price 2 (Base 100)", "Equally Weighted Benchmark")
-
-    ' Bulk-drop the array data onto the sheet
-    wsOut.Cells(2, startCol).Resize(outRows, 4).Value = outArr
-
-    ' Apply Formatting
-    wsOut.Columns(startCol).NumberFormat = "dd/mm/yyyy"
-    wsOut.Columns(startCol + 1).Resize(, 3).NumberFormat = "0.00"
-    wsOut.Columns.AutoFit
 End Sub
