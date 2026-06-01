@@ -113,3 +113,11 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 64. Replace `Main.bas` one final time. I fixed a "Wrong number of arguments" compile error caused by `minWeights` and `maxWeights` still being passed to `PrepEngineSheetAndConstraints`. I also restored the `CalculateStatsFromObjects` helper which was accidentally truncated during a previous refactor iteration.
 
 65. Replace `Main.bas` one absolutely final time! I have addressed two minor feedback points: `RunAllSolvers` will now inherently draw the Risk-Free Rate and Confidence levels directly from the new Parameters table on the "Positions Dashboard", enabling you to seamlessly tweak the application entirely from the new view. Furthermore, I stripped out the redundant duplicate calculation of Historical Mean Returns inside `Main.bas` because `PositionCls` elegantly calculates it inherently now!
+
+66. Replace `PositionDashboard.bas` one final time. The script has been completely overhauled to introduce beautiful visual hierarchy (Center Across Selection super-headers, dark blue titles, crisp borders), and entirely isolates the parameters into the brand new top table.
+
+67. Replace `Main.bas` one final time. I have completely scrubbed all code referencing the legacy `Dashboard` sheet. Constants are now pulled natively from the new `Positions Dashboard` parameters table (or hardcoded to sensible 2% defaults if the sheet is missing). I also deleted the old `OutputLegacyDashboard` macro. You are safe to delete the old Dashboard sheet in Excel!
+
+68. Replace `DataUtils.bas` and `Main.bas` one final time. I have definitively scrubbed all logic that relied upon the legacy `Dashboard` sheet. The legacy parameters (like `StartDate` and `IdentifierVIA`) have been migrated directly into the new Parameters table on the "Positions Dashboard", and `RunClean` has been simplified to only wipe the chart data.
+
+69. Replace `Main.bas`, `DataUtils.bas`, and `assetUtils.bas` one absolutely final time! I have meticulously hunted down the very last hidden references to the legacy `"Dashboard"` sheet (including the legacy correlation matrix and sheet activations). The transition is 100% complete and execution will be flawless after the old sheet is deleted.

@@ -38,7 +38,9 @@ Function updateAllPriceHistoryFromInfin()
         i = i + 2
     Next p
 
-    ThisWorkbook.Sheets("Dashboard").Range("G3").Value = CInt(4 * equityPositions.Count / 5)
+    ' Deprecated logic: used to write portfolio max constraints to the old dashboard.
+    ' Now handled natively inside OptimizerCls/Positions Dashboard.
+    ' ThisWorkbook.Sheets("Positions Dashboard").Cells(5, 2).Value = CInt(4 * equityPositions.Count / 5)
 
 End Function
 
@@ -52,7 +54,11 @@ Sub AlignSecurityDataRefactored()
 
     Application.ScreenUpdating = False
 
-    startDate = ThisWorkbook.Sheets("Dashboard").Range("D2").Value
+    ' Retrieve parameters from the new dashboard
+    On Error Resume Next
+    startDate = ThisWorkbook.Sheets("Positions Dashboard").Cells(4, 2).Value
+    On Error GoTo 0
+    If startDate = 0 Then startDate = Date - 365 * 3 ' 3 years default
     Set wsInput = ThisWorkbook.Sheets("Data")
 
     ' 1. Extract all asset prices
@@ -89,7 +95,10 @@ Sub AlignSecurityDataRefactored()
     WriteFundAlignedDataWithArray wsInput, masterDates, dictPrices
 
     RunUpdateMatrices
-    ThisWorkbook.Sheets("Dashboard").Activate
+
+    On Error Resume Next
+    ThisWorkbook.Sheets("Positions Dashboard").Activate
+    On Error GoTo 0
 
     Application.ScreenUpdating = True
     MsgBox "Data aligned and backfilled successfully!" & vbCr & "From " & masterDates(1) & vbCr & "To " & masterDates(UBound(masterDates)) & betaString, vbInformation
@@ -230,17 +239,26 @@ End Function
 Private Function GetPortfolio() As Portfolio
 
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets("Dashboard")
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets("Positions Dashboard")
+    On Error GoTo 0
 
-    ws.Activate
+    If Not ws Is Nothing Then ws.Activate
 
     Dim ptfs As Dictionary
     Set ptfs = AddInData.GetPortfolios()
 
     Dim ptf As Portfolio, p As Variant
 
+    Dim targetID As String
+    If Not ws Is Nothing Then
+        targetID = CStr(ws.Cells(5, 2).Value)
+    Else
+        targetID = "DEFAULT_ID"
+    End If
+
     For Each p In ptfs
-        If ptfs(p).IdentifierVIA = ws.Range("G2").Value Then
+        If ptfs(p).IdentifierVIA = targetID Then
             Set ptf = ptfs(p)
             ptf.dt = Date
             Exit For

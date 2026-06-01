@@ -28,7 +28,6 @@ Sub RunUpdateMatrices()
     Application.ScreenUpdating = False
 
     Dim rf As Double, conf As Double
-    ' Try to read from the new Parameters table on Positions Dashboard first
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
@@ -38,9 +37,9 @@ Sub RunUpdateMatrices()
     End If
     On Error GoTo 0
 
-    ' Fallback to legacy dashboard if new one isn't generated yet or empty
-    If rf = 0 Then rf = Sheets(DASH_SHEET).Range("D4").Value
-    If conf = 0 Then conf = Sheets(DASH_SHEET).Range("D5").Value
+    ' Fail-safe defaults if the Positions Dashboard is deleted or hasn't been created yet
+    If rf = 0 Then rf = 0.02
+    If conf = 0 Then conf = 0.95
 
     Dim masterPositions As Object
     Dim benchPositions As Object
@@ -77,7 +76,6 @@ Sub RunAllSolvers()
     Sheets(ENGINE_SHEET).Activate
 
     Dim rf As Double, conf As Double
-    ' Try to read from the new Parameters table on Positions Dashboard first
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
@@ -87,9 +85,9 @@ Sub RunAllSolvers()
     End If
     On Error GoTo 0
 
-    ' Fallback to legacy dashboard if new one isn't generated yet or empty
-    If rf = 0 Then rf = Sheets(DASH_SHEET).Range("D4").Value
-    If conf = 0 Then conf = Sheets(DASH_SHEET).Range("D5").Value
+    ' Fail-safe defaults if the Positions Dashboard is deleted or hasn't been created yet
+    If rf = 0 Then rf = 0.02
+    If conf = 0 Then conf = 0.95
 
     ' 1. & 2. Fetch raw data and Cache OOP objects FIRST
     Dim masterPositions As Object
@@ -111,7 +109,6 @@ Sub RunAllSolvers()
 
     Dim covMat() As Double
     covMat = CalculateCovarianceFromObjects(masterPositions, meanRets)
-    Call OutputCorrelationMatrix(covMat, GetDictKeys(masterPositions))
 
     ' 4. Prep legacy Engine constraints
     Dim strategies As Variant
@@ -138,13 +135,14 @@ Sub RunAllSolvers()
     Call OptimizeAndSimulateStrategies(strategies, masterPositions, masterPortfolios, rf, conf, benchPort)
 
     ' 8. Output to Dashboards
-    Call OutputLegacyDashboard(masterPositions, masterPortfolios, strategies, lastDate)
-
     Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
     Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios)
 
     Sheets(ENGINE_SHEET).Visible = False
-    Sheets(DASH_SHEET).Activate
+
+    On Error Resume Next
+    Sheets("Positions Dashboard").Activate
+    On Error GoTo 0
 
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
@@ -388,124 +386,13 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions
     Next pKey
 End Sub
 
-Private Sub OutputLegacyDashboard(masterPositions As Object, masterPortfolios As Object, strategies As Variant, lastDate As Date)
-    Dim pKey As Variant
-    Dim rIdx As Integer
-    rIdx = 0
-
-    Dim nAssets As Integer
-    nAssets = masterPositions.Count
-    Dim keysArray() As String
-    keysArray = GetDictKeys(masterPositions)
-
-    Dim wsChart As Worksheet
-    Set wsChart = Sheets(CHART_SHEET)
-
-    Dim wsDashLegacy As Worksheet
-    Set wsDashLegacy = Sheets(DASH_SHEET)
-
-    ' Output Positions
-    For Each pKey In keysArray
-        Dim curPos As PositionCls
-        Set curPos = masterPositions(pKey)
-        Dim dummyW As Variant
-
-        Call portfolioUtils.OutputMetricsToRow(rIdx, curPos.AssetName, curPos.Metrics.Ret, curPos.Metrics.Vol, curPos.Metrics.Sharpe, curPos.Metrics.MDD, curPos.Metrics.MDDLen, curPos.Metrics.VaR, dummyW, "AssetMetricsStart", False)
-
-        Dim aRow As Long, aCol As Long
-        aRow = wsDashLegacy.Range("AssetMetricsStart").Row + 1 + rIdx
-        aCol = wsDashLegacy.Range("AssetMetricsStart").Column
-        wsDashLegacy.Cells(aRow, aCol + 7).Value = curPos.Metrics.DownsideBeta
-
-        Dim pArr() As Double
-        pArr = curPos.Prices
-        Dim nDays As Long
-        nDays = UBound(pArr)
-        Dim curve() As Double
-        ReDim curve(1 To nDays, 1 To 1)
-        Dim iDay As Long
-        For iDay = 1 To nDays
-            curve(iDay, 1) = (pArr(iDay) / pArr(1)) * 100
-        Next iDay
-        wsChart.Range(wsChart.Cells(2, 2 + rIdx), wsChart.Cells(2 + nDays - 1, 2 + rIdx)).Value = curve
-
-        rIdx = rIdx + 1
-    Next pKey
-
-    ' Output Portfolios
-    Dim i As Integer
-    For i = LBound(strategies) To UBound(strategies)
-        Dim simPort As SimulatedPortfolioCls
-        Set simPort = masterPortfolios(CStr(strategies(i)))
-
-        Dim wArr() As Double
-        ReDim wArr(1 To 1, 1 To nAssets)
-        Dim idx As Integer
-        For idx = 1 To nAssets
-            wArr(1, idx) = simPort.GetWeight(keysArray(idx))
-        Next idx
-
-        Call portfolioUtils.OutputMetricsToRow(i - 1, simPort.StrategyName, simPort.Metrics.Ret, simPort.Metrics.Vol, simPort.Metrics.Sharpe, simPort.Metrics.MDD, simPort.Metrics.MDDLen, simPort.Metrics.VaR, wArr, "StrategyTableStart", True)
-
-        Dim colOffset As Integer
-        colOffset = (nAssets + 1) + i
-        Call chartsUtils.WriteCurveToSheet(simPort.EquityCurve, colOffset)
-
-        Dim ddColOffset As Integer
-        ddColOffset = (nAssets + 1) + UBound(strategies) + i
-        Call chartsUtils.WriteCurveToSheet(simPort.DrawdownCurve, ddColOffset)
-
-        Dim wColStart As Integer
-        wColStart = 2 + (i - 1) * nAssets
-        Call chartsUtils.WriteWeightsToSheet(simPort.DailyWeights, wColStart)
-    Next i
-
-    Dim startRow As Integer, startCol As Integer
-    startRow = wsDashLegacy.Range("StrategyWeightsStart").Row
-    startCol = wsDashLegacy.Range("StrategyWeightsStart").Column + UBound(strategies) - LBound(strategies) + 1
-
-    Dim equityPositions As Dictionary
-    Set equityPositions = DataUtils.GetEquityPositionsFromFund()
-
-    Dim equitySum As Double
-    equitySum = 0
-    For i = 1 To equityPositions.Count
-        equitySum = equitySum + equityPositions(equityPositions.Keys(i - 1)).Weight
-    Next i
-
-    For i = 1 To equityPositions.Count
-        wsDashLegacy.Cells(startRow + i, startCol + 1).Value = equityPositions(equityPositions.Keys(i - 1)).Weight / equitySum
-        wsDashLegacy.Cells(startRow + i, startCol + 2).Value = wsDashLegacy.Cells(startRow + i, startCol + 1).Value - wsDashLegacy.Cells(startRow + i, startCol).Value
-        wsDashLegacy.Cells(startRow + i, startCol + UBound(strategies) + 3).Value = equityPositions(equityPositions.Keys(i - 1)).Weight
-        wsDashLegacy.Cells(startRow + i, startCol + UBound(strategies) + 4).Value = wsDashLegacy.Cells(startRow + i, startCol + UBound(strategies) + 3).Value - wsDashLegacy.Cells(startRow + i, startCol + UBound(strategies) + 2).Value
-    Next i
-
-    Call chartsUtils.UpdateDashboardCharts(nAssets, UBound(strategies), lastDate)
-End Sub
 ' ==========================================================
 ' CLEAN
 ' ==========================================================
 
 Sub RunClean()
-    Dim wsDash As Worksheet
-    Set wsDash = Sheets(DASH_SHEET)
-
-    Dim stratR As Long, stratC As Long
-    stratR = wsDash.Range("StrategyTableStart").Row + 1
-    stratC = wsDash.Range("StrategyTableStart").Column
-    wsDash.Range(wsDash.Cells(stratR, stratC), wsDash.Cells(stratR + 5, stratC + 100)).ClearContents
-
-    Dim inputR As Long, inputC As Long
-    inputR = wsDash.Range("InputTableStart").Row + 1
-    inputC = wsDash.Range("InputTableStart").Column
-    wsDash.Range(wsDash.Cells(inputR, inputC - 1), wsDash.Cells(stratR - 3, wsDash.Range("InputTableStart").End(xlToRight).Column)).ClearContents
-
-    Dim corrR As Long
-    corrR = wsDash.Range("CorrMatrixStart").Row + 1
-    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("CorrMatrixStart").Column), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column + 50)).ClearContents
-    corrR = wsDash.Range("StrategyWeightsStart").Row + 1
-    wsDash.Range(wsDash.Cells(corrR - 1, wsDash.Range("StrategyWeightsStart").Column + 1), wsDash.Cells(corrR - 1, wsDash.Range("CorrMatrixStart").Column)).ClearContents
-    wsDash.Range(wsDash.Cells(corrR, wsDash.Range("StrategyWeightsStart").Column - 1), wsDash.Cells(corrR + 50, wsDash.Range("CorrMatrixStart").Column - 2)).ClearContents
+    On Error Resume Next
     Sheets(CHART_SHEET).Cells.ClearContents
     Sheets(WEIGHTS_SHEET).Cells.ClearContents
+    On Error GoTo 0
 End Sub
