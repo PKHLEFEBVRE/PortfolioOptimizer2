@@ -60,3 +60,8 @@ To view the new Positions Dashboard:
 35. Replace `Main.bas` one final time. I fixed a simple `Duplicate declaration in current scope` compile error that was caused by defining the `rf` and `conf` variables both before and inside the portfolio simulation loop.
 
 36. Replace `Main.bas` one final time! I have drastically refactored `RunAllSolvers`, splitting its bloated 200+ lines into 5 very clean, readable helper functions.
+
+37. Re-import `Main.bas` (Refactored `RunAllSolvers` to fetch data into `PositionCls` objects first, and then calculates covariance and expected returns by extracting the cleanly parsed `LogReturns` directly from the OOP objects rather than tracking legacy arrays).
+38. Re-import `assetUtils.bas` (Cleaned up the legacy array-based stats and covariance methods since they are completely handled by OOP principles now).
+
+39. Replace `Main.bas` one final time. I fixed a compiler error caused by the `CalculateStatsFromObjects` and `CalculateCovarianceFromObjects` subroutines being accidentally duplicated during the previous refactor step.

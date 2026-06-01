@@ -58,10 +58,18 @@ Sub RunUpdateMatrices()
     Call UpdateConvictions
     Call UpdateCurrentPrices(fundPrices)
 
-    Dim logRets() As Double, meanRets() As Double
-    Call CalculateHistoricalStats(dates, fundPrices, logRets, meanRets)
+    ' Cache objects temporarily just to update the dashboard values
+    Dim rf As Double, conf As Double
+    rf = Sheets(DASH_SHEET).Range("D4").Value
+    conf = Sheets(DASH_SHEET).Range("D5").Value
 
-    'MsgBox "Data Updated. Matrices Built.", vbInformation
+    Dim masterPositions As Object
+    Set masterPositions = CacheMasterPositions(fundPrices, fundAssetNames, dates, rf, conf)
+
+    Dim meanRets() As Double, expReturns() As Double
+    Call CalculateStatsFromObjects(masterPositions, fundAssetNames, dates(UBound(dates)), meanRets, expReturns)
+
+    ' MsgBox "Data Updated. Matrices Built.", vbInformation
     Application.ScreenUpdating = True
 End Sub
 
@@ -85,30 +93,29 @@ Sub RunAllSolvers()
     Dim nAssets As Integer
     nAssets = UBound(fundAssetNames)
 
-    ' 3. Compute stats for Fund assets
-    Dim logRets() As Double, meanRets() As Double
-    Call CalculateHistoricalStats(dates, fundPrices, logRets, meanRets)
-
-    Dim covMat() As Double
-    covMat = CalculateCovariance(logRets, meanRets)
-    Call OutputCorrelationMatrix(covMat, fundAssetNames)
-
-    Dim expReturns() As Double
     Dim lastDate As Date
     lastDate = dates(UBound(dates))
-    expReturns = CalculateExpectedReturns(meanRets, lastDate)
 
-    ' 4. Prep legacy Engine constraints
+    ' 3. Cache OOP objects FIRST
+    Dim masterPositions As Object
+    Set masterPositions = CacheMasterPositions(fundPrices, fundAssetNames, dates, rf, conf)
+
+    ' 4. Compute stats dynamically using the PositionCls objects
+    Dim meanRets() As Double
+    Dim expReturns() As Double
+    Call CalculateStatsFromObjects(masterPositions, fundAssetNames, lastDate, meanRets, expReturns)
+
+    Dim covMat() As Double
+    covMat = CalculateCovarianceFromObjects(masterPositions, fundAssetNames, meanRets)
+    Call OutputCorrelationMatrix(covMat, fundAssetNames)
+
+    ' 5. Prep legacy Engine constraints
     Dim strategies As Variant
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN")
 
     Dim minWeights() As Double, maxWeights() As Double
     Call PrepEngineSheetAndConstraints(fundAssetNames, expReturns, covMat, minWeights, maxWeights)
     Call SyncSimWeightsHeaders(dates, fundAssetNames, strategies)
-
-    ' 5. Cache OOP objects
-    Dim masterPositions As Object
-    Set masterPositions = CacheMasterPositions(fundPrices, fundAssetNames, dates, expReturns, rf, conf)
 
     Dim masterPortfolios As Object
     Set masterPortfolios = CreateObject("Scripting.Dictionary")
@@ -144,6 +151,94 @@ End Sub
 
 ' -------------------------------------------------------------------------
 ' REFACTOR HELPERS
+
+Private Sub CalculateStatsFromObjects(masterPositions As Object, fundAssetNames() As String, lastDate As Date, ByRef meanRets() As Double, ByRef expReturns() As Double)
+    Dim nAssets As Integer
+    nAssets = UBound(fundAssetNames)
+    ReDim meanRets(1 To nAssets)
+    ReDim expReturns(1 To nAssets)
+
+    Dim i As Integer
+    For i = 1 To nAssets
+        Dim pos As PositionCls
+        Set pos = masterPositions(fundAssetNames(i))
+
+        ' Compute mean log return
+        Dim lRets() As Double
+        lRets = pos.LogReturns
+        Dim nRets As Long
+        nRets = UBound(lRets)
+
+        Dim s As Double
+        s = 0
+        Dim j As Long
+        For j = 1 To nRets
+            s = s + lRets(j)
+        Next j
+
+        Dim dateDiff As Double
+        dateDiff = pos.Dates(UBound(pos.Dates)) - pos.Dates(LBound(pos.Dates))
+        If dateDiff > 0 Then
+            meanRets(i) = s / dateDiff * 365
+        Else
+            meanRets(i) = 0
+        End If
+    Next i
+
+    ' Compute Expected Returns leveraging the helper in assetUtils
+    expReturns = assetUtils.CalculateExpectedReturns(meanRets, lastDate)
+
+    ' Assign Expected Returns back to the PositionCls objects
+    For i = 1 To nAssets
+        masterPositions(fundAssetNames(i)).ExpectedReturn = expReturns(i)
+    Next i
+End Sub
+
+Private Function CalculateCovarianceFromObjects(masterPositions As Object, fundAssetNames() As String, meanRets() As Double) As Double()
+    Dim nAssets As Integer
+    nAssets = UBound(fundAssetNames)
+
+    Dim firstPos As PositionCls
+    Set firstPos = masterPositions(fundAssetNames(1))
+    Dim nRets As Long
+    nRets = UBound(firstPos.LogReturns)
+
+    Dim res() As Double
+    ReDim res(1 To nAssets, 1 To nAssets)
+
+    Dim j As Integer, k As Integer, i As Long
+    For j = 1 To nAssets
+        Dim posJ As PositionCls
+        Set posJ = masterPositions(fundAssetNames(j))
+        Dim lRetsJ() As Double
+        lRetsJ = posJ.LogReturns
+        Dim meanJ As Double
+        meanJ = meanRets(j) / 256
+
+        For k = 1 To nAssets
+            Dim posK As PositionCls
+            Set posK = masterPositions(fundAssetNames(k))
+            Dim lRetsK() As Double
+            lRetsK = posK.LogReturns
+            Dim meanK As Double
+            meanK = meanRets(k) / 256
+
+            Dim sumProd As Double
+            sumProd = 0
+
+            For i = 1 To nRets
+                sumProd = sumProd + (lRetsJ(i) - meanJ) * (lRetsK(i) - meanK)
+            Next i
+
+            If nRets > 0 Then
+                res(j, k) = (sumProd / nRets) * 256
+            End If
+        Next k
+    Next j
+
+    CalculateCovarianceFromObjects = res
+End Function
+
 ' -------------------------------------------------------------------------
 
 Private Sub SplitBenchmarkAndFundAssets(prices() As Variant, assetNames() As String, ByRef fundPrices() As Double, ByRef fundAssetNames() As String, ByRef benchPricesRaw() As Double, ByRef benchAssetNames() As String)
@@ -207,7 +302,7 @@ Private Sub PrepEngineSheetAndConstraints(fundAssetNames() As String, expReturns
     Next k
 End Sub
 
-Private Function CacheMasterPositions(fundPrices() As Double, fundAssetNames() As String, dates() As Date, expReturns() As Double, rf As Double, conf As Double) As Object
+Private Function CacheMasterPositions(fundPrices() As Double, fundAssetNames() As String, dates() As Date, rf As Double, conf As Double) As Object
     Dim masterPositions As Object
     Set masterPositions = CreateObject("Scripting.Dictionary")
 
@@ -245,8 +340,6 @@ Private Function CacheMasterPositions(fundPrices() As Double, fundAssetNames() A
             cachePos.SPProba = cDict("SP proba")
             On Error GoTo 0
         End If
-
-        cachePos.ExpectedReturn = expReturns(cacheIdx)
         masterPositions.Add fundAssetNames(cacheIdx), cachePos
     Next cacheIdx
 

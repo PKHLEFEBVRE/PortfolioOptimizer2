@@ -30,52 +30,9 @@ Sub GetHistoricalDataDatesAndNames(ByRef outPrices As Variant, ByRef outDates() 
     Next i
 End Sub
 
-Sub CalculateHistoricalStats(dates As Variant, prices As Variant, ByRef outLogRets() As Double, ByRef outMeanRets() As Double)
-    Dim nDays As Long, nAssets As Long
-    Dim i As Long, j As Long
-    nDays = UBound(prices, 1)
-    nAssets = UBound(prices, 2)
-    ReDim outLogRets(1 To nDays - 1, 1 To nAssets)
-    ReDim outMeanRets(1 To nAssets)
-    For j = 1 To nAssets
-        Dim sumLogRet As Double
-        sumLogRet = 0
-        For i = 2 To nDays
-            Dim pNow As Double, pPrev As Double
-            pNow = prices(i, j)
-            pPrev = prices(i - 1, j)
-            If pPrev > 0 And pNow > 0 Then
-                outLogRets(i - 1, j) = Log(pNow / pPrev)
-                sumLogRet = sumLogRet + outLogRets(i - 1, j)
-            Else
-                outLogRets(i - 1, j) = 0
-            End If
-        Next i
-        outMeanRets(j) = sumLogRet / (dates(nDays) - dates(1)) * 365
-    Next j
-End Sub
 
-Function CalculateCovariance(logRets() As Double, meanRets() As Double) As Double()
-    Dim nDays As Long, nAssets As Long
-    Dim i As Long, j As Long, k As Long
-    Dim res() As Double
-    nDays = UBound(logRets, 1) + 1
-    nAssets = UBound(logRets, 2)
-    ReDim res(1 To nAssets, 1 To nAssets)
-    For j = 1 To nAssets
-        For k = 1 To nAssets
-            Dim sumProd As Double, meanJ As Double, meanK As Double
-            sumProd = 0
-            meanJ = meanRets(j) / 256
-            meanK = meanRets(k) / 256
-            For i = 1 To nDays - 1
-                sumProd = sumProd + (logRets(i, j) - meanJ) * (logRets(i, k) - meanK)
-            Next i
-            res(j, k) = (sumProd / (nDays - 1)) * 256
-        Next k
-    Next j
-    CalculateCovariance = res
-End Function
+
+
 
 Function CalculateExpectedReturns(histMeanRets() As Double, currDate As Date) As Double()
     Dim wsDash As Worksheet
