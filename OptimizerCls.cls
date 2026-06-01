@@ -14,7 +14,7 @@ Private Const ENGINE_SHEET As String = "Engine"
 
 ' Optimizes the weights in the provided portfolio based on its StrategyName.
 ' It modifies the portfolio's weights in place.
-Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWeights() As Double, ByRef sumWeights() As Double)
+Public Sub Optimize(port As SimulatedPortfolioCls, ByRef sumWeights() As Double)
     Dim wsEng As Worksheet
     Dim optRange As Range
     Set wsEng = Sheets(ENGINE_SHEET)
@@ -104,6 +104,19 @@ Public Sub Optimize(port As SimulatedPortfolioCls, minWeights() As Double, maxWe
         Next m
 
     Else
+        ' Extract bounds natively from the portfolio assets
+        Dim minWeights() As Double, maxWeights() As Double
+        ReDim minWeights(1 To nAssets)
+        ReDim maxWeights(1 To nAssets)
+
+        For m = 1 To nAssets
+            Set pos = port.GetPosition(CStr(posKeys(m)))
+            If Not pos Is Nothing Then
+                minWeights(m) = pos.MinWeight
+                maxWeights(m) = pos.MaxWeight
+            End If
+        Next m
+
         ' Solver-based Optimization: SHARPE, Variance, Kelly, ERC UNCSTRD
         Call solverUtils.RunSolver(stratName, minWeights, maxWeights, False)
 

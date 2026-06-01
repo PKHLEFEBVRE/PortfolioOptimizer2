@@ -105,3 +105,11 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 60. Re-import `PositionDashboard.bas`. I executed the dashboard redesign: generated a Parameters table at the top, split the portfolios into a separate Metrics Table (which now includes columns for every single risk limitation factor) and a separate Weights Table below it!
 
 61. Replace `Main.bas` one final time. I fixed a `Type Mismatch` error where `Main.bas` was still expecting `ComputeFinalRiskFactor` to return a `Double` instead of the newly updated `Dictionary` Object.
+
+62. Re-import `Main.bas`. I significantly streamlined `RunUpdateMatrices` so it generates the fresh position dashboard first. When you subsequently trigger `RunAllSolvers`, it natively scans the dashboard, absorbs your manual inputs directly into the properties of `PositionCls`, internally calculates expected returns, and proceeds without passing clumsy array matrices.
+
+63. Re-import `OptimizerCls.cls`. I removed the `minWeights` and `maxWeights` array parameters. The optimizer now extracts bounds directly from the `PositionCls` objects via `pos.MinWeight` and `pos.MaxWeight`.
+
+64. Replace `Main.bas` one final time. I fixed a "Wrong number of arguments" compile error caused by `minWeights` and `maxWeights` still being passed to `PrepEngineSheetAndConstraints`. I also restored the `CalculateStatsFromObjects` helper which was accidentally truncated during a previous refactor iteration.
+
+65. Replace `Main.bas` one absolutely final time! I have addressed two minor feedback points: `RunAllSolvers` will now inherently draw the Risk-Free Rate and Confidence levels directly from the new Parameters table on the "Positions Dashboard", enabling you to seamlessly tweak the application entirely from the new view. Furthermore, I stripped out the redundant duplicate calculation of Historical Mean Returns inside `Main.bas` because `PositionCls` elegantly calculates it inherently now!

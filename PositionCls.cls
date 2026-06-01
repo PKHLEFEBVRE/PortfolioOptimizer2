@@ -23,6 +23,9 @@ Private p_SP As Double
 Private p_SPProba As Double
 Private p_ExpectedReturn As Double
 Private p_TargetDate As Date
+Private p_MinWeight As Double
+Private p_MaxWeight As Double
+Private p_HistoricalMeanReturn As Double
 
 
 Public Property Get AssetName() As String
@@ -105,6 +108,30 @@ Public Property Let TargetDate(ByVal value As Date)
     p_TargetDate = value
 End Property
 
+Public Property Get MinWeight() As Double
+    MinWeight = p_MinWeight
+End Property
+
+Public Property Let MinWeight(ByVal value As Double)
+    p_MinWeight = value
+End Property
+
+Public Property Get MaxWeight() As Double
+    MaxWeight = p_MaxWeight
+End Property
+
+Public Property Let MaxWeight(ByVal value As Double)
+    p_MaxWeight = value
+End Property
+
+Public Property Get HistoricalMeanReturn() As Double
+    HistoricalMeanReturn = p_HistoricalMeanReturn
+End Property
+
+Public Property Let HistoricalMeanReturn(ByVal value As Double)
+    p_HistoricalMeanReturn = value
+End Property
+
 
 Private Sub Class_Initialize()
     Set p_Metrics = New MetricsCalculatorCls
@@ -142,7 +169,7 @@ Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optio
     p_Metrics.Calculate p_Prices, p_Dates, p_LogRets, True, riskFreeRate, varConfidence, benchPort, "Asset"
 End Sub
 
-Public Sub ComputeExpectedReturn(histMeanRet As Double, currDate As Date)
+Public Sub ComputeExpectedReturn(currDate As Date)
     Dim pCurr As Double, pTgt As Double, wTgt As Double
     Dim pStop As Double, wStop As Double
 
@@ -153,6 +180,25 @@ Public Sub ComputeExpectedReturn(histMeanRet As Double, currDate As Date)
         Exit Sub
     End If
 
+    ' 1. Calculate Historical Mean Return internally
+    Dim nRets As Long
+    nRets = UBound(p_LogRets)
+    Dim s As Double
+    s = 0
+    Dim j As Long
+    For j = 1 To nRets
+        s = s + p_LogRets(j)
+    Next j
+
+    Dim dateDiff As Double
+    dateDiff = p_Dates(UBound(p_Dates)) - p_Dates(LBound(p_Dates))
+    If dateDiff > 0 Then
+        p_HistoricalMeanReturn = s / dateDiff * 365
+    Else
+        p_HistoricalMeanReturn = 0
+    End If
+
+    ' 2. Calculate Expected Return
     pTgt = p_TP
     wTgt = p_TPProba
     pStop = p_SP
@@ -168,7 +214,7 @@ Public Sub ComputeExpectedReturn(histMeanRet As Double, currDate As Date)
     Dim termTgt As Double, termStop As Double, termHist As Double
     termTgt = pTgt * wTgt
     termStop = pStop * wStop
-    termHist = pCurr * (Exp(histMeanRet) ^ T_years) * (1 - wTgt - wStop)
+    termHist = pCurr * (Exp(p_HistoricalMeanReturn) ^ T_years) * (1 - wTgt - wStop)
 
     Dim eFinal As Double
     eFinal = termTgt + termStop + termHist

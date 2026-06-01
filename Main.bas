@@ -28,8 +28,19 @@ Sub RunUpdateMatrices()
     Application.ScreenUpdating = False
 
     Dim rf As Double, conf As Double
-    rf = Sheets(DASH_SHEET).Range("D4").Value
-    conf = Sheets(DASH_SHEET).Range("D5").Value
+    ' Try to read from the new Parameters table on Positions Dashboard first
+    On Error Resume Next
+    Dim wsNewDash As Worksheet
+    Set wsNewDash = Sheets("Positions Dashboard")
+    If Not wsNewDash Is Nothing Then
+        rf = wsNewDash.Cells(2, 2).Value
+        conf = wsNewDash.Cells(3, 2).Value
+    End If
+    On Error GoTo 0
+
+    ' Fallback to legacy dashboard if new one isn't generated yet or empty
+    If rf = 0 Then rf = Sheets(DASH_SHEET).Range("D4").Value
+    If conf = 0 Then conf = Sheets(DASH_SHEET).Range("D5").Value
 
     Dim masterPositions As Object
     Dim benchPositions As Object
@@ -50,8 +61,13 @@ Sub RunUpdateMatrices()
     Dim lastDate As Date
     lastDate = tmpDates(UBound(tmpDates))
 
-    Dim meanRets() As Double
-    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets)
+    Dim pKey As Variant
+    For Each pKey In masterPositions.Keys
+        masterPositions(pKey).ComputeExpectedReturn lastDate
+    Next pKey
+
+    ' Output the bare positions dashboard so the user can tweak parameters
+    Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
 
     Application.ScreenUpdating = True
 End Sub
@@ -61,8 +77,19 @@ Sub RunAllSolvers()
     Sheets(ENGINE_SHEET).Activate
 
     Dim rf As Double, conf As Double
-    rf = Sheets(DASH_SHEET).Range("D4").Value
-    conf = Sheets(DASH_SHEET).Range("D5").Value
+    ' Try to read from the new Parameters table on Positions Dashboard first
+    On Error Resume Next
+    Dim wsNewDash As Worksheet
+    Set wsNewDash = Sheets("Positions Dashboard")
+    If Not wsNewDash Is Nothing Then
+        rf = wsNewDash.Cells(2, 2).Value
+        conf = wsNewDash.Cells(3, 2).Value
+    End If
+    On Error GoTo 0
+
+    ' Fallback to legacy dashboard if new one isn't generated yet or empty
+    If rf = 0 Then rf = Sheets(DASH_SHEET).Range("D4").Value
+    If conf = 0 Then conf = Sheets(DASH_SHEET).Range("D5").Value
 
     ' 1. & 2. Fetch raw data and Cache OOP objects FIRST
     Dim masterPositions As Object
@@ -90,8 +117,7 @@ Sub RunAllSolvers()
     Dim strategies As Variant
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN")
 
-    Dim minWeights() As Double, maxWeights() As Double
-    Call PrepEngineSheetAndConstraints(masterPositions, covMat, minWeights, maxWeights)
+    Call PrepEngineSheetAndConstraints(masterPositions, covMat)
     Call SyncSimWeightsHeaders(dates, GetDictKeys(masterPositions), strategies)
 
     Dim masterPortfolios As Object
@@ -109,7 +135,7 @@ Sub RunAllSolvers()
     Next pKey
 
     ' 7. Optimize and Simulate Active Strategies
-    Call OptimizeAndSimulateStrategies(strategies, minWeights, maxWeights, masterPositions, masterPortfolios, rf, conf, benchPort)
+    Call OptimizeAndSimulateStrategies(strategies, masterPositions, masterPortfolios, rf, conf, benchPort)
 
     ' 8. Output to Dashboards
     Call OutputLegacyDashboard(masterPositions, masterPortfolios, strategies, lastDate)
@@ -184,6 +210,10 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
             On Error GoTo 0
         End If
 
+        ' Set default bounds
+        cachePos.MinWeight = 0
+        cachePos.MaxWeight = 1
+
         ' Default target date for expected return calculations
         cachePos.TargetDate = Date + 365
 
@@ -193,6 +223,10 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
             outFundPositions.Add assetNames(cacheIdx), cachePos
         End If
     Next cacheIdx
+
+    ' AFTER all positions are initialized, overwrite the defaults using the user's manual dashboard inputs!
+    Call PositionDashboard.GetDashboardInputs(outFundPositions)
+
 End Sub
 
 Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Date, rf As Double, conf As Double) As SimulatedPortfolioCls
@@ -212,6 +246,7 @@ Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Da
     Set BuildBenchmarkPortfolio = benchPort
 End Function
 
+
 Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Date, ByRef meanRets() As Double)
     Dim nAssets As Integer
     nAssets = masterPositions.Count
@@ -224,31 +259,11 @@ Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Dat
         Dim pos As PositionCls
         Set pos = masterPositions(pKey)
 
-        Dim lRets() As Double
-        lRets = pos.LogReturns
-        Dim nRets As Long
-        nRets = UBound(lRets)
+        ' Compute expected returns which internally calculates HistoricalMeanReturn
+        pos.ComputeExpectedReturn lastDate
 
-        Dim s As Double
-        s = 0
-        Dim j As Long
-        For j = 1 To nRets
-            s = s + lRets(j)
-        Next j
-
-        Dim tmpDates() As Date
-        tmpDates = pos.Dates
-        Dim dateDiff As Double
-        dateDiff = tmpDates(UBound(tmpDates)) - tmpDates(LBound(tmpDates))
-        If dateDiff > 0 Then
-            meanRets(i) = s / dateDiff * 365
-        Else
-            meanRets(i) = 0
-        End If
-
-        ' Let the object compute its own expected return
-        pos.ComputeExpectedReturn meanRets(i), lastDate
-
+        ' Extract the historical mean directly from the object
+        meanRets(i) = pos.HistoricalMeanReturn
         i = i + 1
     Next pKey
 End Sub
@@ -301,12 +316,7 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, meanR
     CalculateCovarianceFromObjects = res
 End Function
 
-Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As Double, ByRef minWeights() As Double, ByRef maxWeights() As Double)
-    Dim wsDash As Worksheet
-    Set wsDash = Sheets(DASH_SHEET)
-    Dim inputStart As Long
-    inputStart = wsDash.Range("InputTableStart").Row + 1
-
+Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As Double)
     Dim k As Integer, nAssets As Integer
     nAssets = masterPositions.Count
 
@@ -319,29 +329,12 @@ Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As
 
     For k = 1 To nAssets
         expReturns(k) = masterPositions(keysArray(k)).ExpectedReturn
-        wsDash.Cells(inputStart + k - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value = expReturns(k)
     Next k
 
     Call solverUtils.WriteToEngine(covMat, expReturns)
-
-    ReDim minWeights(1 To nAssets)
-    ReDim maxWeights(1 To nAssets)
-
-    For k = 1 To nAssets
-        If IsEmpty(wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column).Value) Then
-            maxWeights(k) = 1
-        Else
-            maxWeights(k) = wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column).Value
-        End If
-        If IsEmpty(wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column - 1).Value) Then
-            minWeights(k) = 0
-        Else
-            minWeights(k) = wsDash.Cells(inputStart + k - 1, wsDash.Range("maxWeightCol").Column - 1).Value
-        End If
-    Next k
 End Sub
 
-Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As Double, maxWeights() As Double, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchPort As SimulatedPortfolioCls)
+Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchPort As SimulatedPortfolioCls)
     Dim optimizer As OptimizerCls
     Set optimizer = New OptimizerCls
 
@@ -370,7 +363,7 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, minWeights() As
         Next jPos
 
         simPort.SetEqualWeights
-        optimizer.Optimize simPort, minWeights, maxWeights, sumWeights
+        optimizer.Optimize simPort, sumWeights
 
         simPort.Simulate
         simPort.ComputeMetrics rf, conf, benchPort

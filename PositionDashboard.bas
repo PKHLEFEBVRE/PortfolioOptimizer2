@@ -41,7 +41,8 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
     Dim headers As Variant
     headers = Array("Asset Name", "Current Price", "Return (Ann)", "Vol (Ann)", "Sharpe", _
                     "Max Drawdown", "Drawdown Len", "VaR (95%)", "CVaR (95%)", "Semi-Dev", "Downside Beta", _
-                    "Conviction (/5)", "Target Price", "TP Proba", "Stop Price", "SP Proba", "Expected Return")
+                    "Conviction (/5)", "Target Price", "TP Proba", "Stop Price", "SP Proba", _
+                    "Min Weight", "Max Weight", "Expected Return")
 
     wsDash.Range(wsDash.Cells(startRow, 1), wsDash.Cells(startRow, UBound(headers) + 1)).Value = headers
 
@@ -76,7 +77,9 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
         outData(rowIdx, 14) = p.TPProba
         outData(rowIdx, 15) = p.SP
         outData(rowIdx, 16) = p.SPProba
-        outData(rowIdx, 17) = p.ExpectedReturn
+        outData(rowIdx, 17) = p.MinWeight
+        outData(rowIdx, 18) = p.MaxWeight
+        outData(rowIdx, 19) = p.ExpectedReturn
 
         rowIdx = rowIdx + 1
     Next key
@@ -88,7 +91,7 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
     wsDash.Rows(startRow).Interior.Color = RGB(220, 230, 241)
 
     Dim pctCols As Variant
-    pctCols = Array(3, 4, 6, 8, 9, 10, 14, 16, 17)
+    pctCols = Array(3, 4, 6, 8, 9, 10, 14, 16, 17, 18, 19)
     Dim c As Variant
     For Each c In pctCols
         wsDash.Range(wsDash.Cells(startRow + 1, c), wsDash.Cells(startRow + positionsDict.Count, c)).NumberFormat = "0.00%"
@@ -236,4 +239,46 @@ Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object)
 
     wsDash.Columns.AutoFit
     wsDash.Activate
+End Sub
+
+Public Sub GetDashboardInputs(masterPositions As Object)
+    Dim wsDash As Worksheet
+    Dim sheetName As String
+    sheetName = "Positions Dashboard"
+
+    On Error Resume Next
+    Set wsDash = ThisWorkbook.Sheets(sheetName)
+    On Error GoTo 0
+
+    If wsDash Is Nothing Then Exit Sub ' Dashboard hasn't been generated yet
+
+    Dim lastRow As Long
+    lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+    If lastRow < 7 Then Exit Sub ' Table is empty
+
+    ' Headers are at Row 6
+    ' Asset Name is Col 1.
+    ' Overrides: Col 12 (Conviction), 13 (TP), 14 (TP Proba), 15 (SP), 16 (SP Proba), 17 (Min), 18 (Max)
+
+    Dim r As Long
+    For r = 7 To lastRow
+        Dim aName As String
+        aName = wsDash.Cells(r, 1).Value
+        If aName = "" Then Exit For
+
+        If masterPositions.Exists(aName) Then
+            Dim pos As PositionCls
+            Set pos = masterPositions(aName)
+
+            ' Only update if the user typed something
+            If Not IsEmpty(wsDash.Cells(r, 12).Value) Then pos.Conviction = CDbl(wsDash.Cells(r, 12).Value)
+            If Not IsEmpty(wsDash.Cells(r, 13).Value) Then pos.TP = CDbl(wsDash.Cells(r, 13).Value)
+            If Not IsEmpty(wsDash.Cells(r, 14).Value) Then pos.TPProba = CDbl(wsDash.Cells(r, 14).Value)
+            If Not IsEmpty(wsDash.Cells(r, 15).Value) Then pos.SP = CDbl(wsDash.Cells(r, 15).Value)
+            If Not IsEmpty(wsDash.Cells(r, 16).Value) Then pos.SPProba = CDbl(wsDash.Cells(r, 16).Value)
+
+            If Not IsEmpty(wsDash.Cells(r, 17).Value) Then pos.MinWeight = CDbl(wsDash.Cells(r, 17).Value)
+            If Not IsEmpty(wsDash.Cells(r, 18).Value) Then pos.MaxWeight = CDbl(wsDash.Cells(r, 18).Value)
+        End If
+    Next r
 End Sub
