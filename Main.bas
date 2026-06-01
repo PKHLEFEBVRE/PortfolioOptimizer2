@@ -43,8 +43,8 @@ Sub RunUpdateMatrices()
     Dim lastDate As Date
     lastDate = firstPos.Dates(UBound(firstPos.Dates))
 
-    Dim meanRets() As Double, expReturns() As Double
-    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets, expReturns)
+    Dim meanRets() As Double
+    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets)
 
     Application.ScreenUpdating = True
 End Sub
@@ -71,8 +71,7 @@ Sub RunAllSolvers()
 
     ' 3. Compute stats dynamically using the PositionCls objects
     Dim meanRets() As Double
-    Dim expReturns() As Double
-    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets, expReturns)
+    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets)
 
     Dim covMat() As Double
     covMat = CalculateCovarianceFromObjects(masterPositions, meanRets)
@@ -83,7 +82,7 @@ Sub RunAllSolvers()
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN")
 
     Dim minWeights() As Double, maxWeights() As Double
-    Call PrepEngineSheetAndConstraints(masterPositions, expReturns, covMat, minWeights, maxWeights)
+    Call PrepEngineSheetAndConstraints(masterPositions, covMat, minWeights, maxWeights)
     Call SyncSimWeightsHeaders(dates, GetDictKeys(masterPositions), strategies)
 
     Dim masterPortfolios As Object
@@ -178,6 +177,9 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
             On Error GoTo 0
         End If
 
+        ' Default target date for expected return calculations
+        cachePos.TargetDate = Date + 365
+
         If cacheIdx <= 2 Then
             outBenchPositions.Add assetNames(cacheIdx), cachePos
         Else
@@ -216,11 +218,10 @@ Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Da
     Set BuildBenchmarkPortfolio = benchPort
 End Function
 
-Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Date, ByRef meanRets() As Double, ByRef expReturns() As Double)
+Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Date, ByRef meanRets() As Double)
     Dim nAssets As Integer
     nAssets = masterPositions.Count
     ReDim meanRets(1 To nAssets)
-    ReDim expReturns(1 To nAssets)
 
     Dim i As Integer
     i = 1
@@ -248,14 +249,10 @@ Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Dat
         Else
             meanRets(i) = 0
         End If
-        i = i + 1
-    Next pKey
 
-    expReturns = assetUtils.CalculateExpectedReturns(meanRets, lastDate)
+        ' Let the object compute its own expected return
+        pos.ComputeExpectedReturn meanRets(i), lastDate
 
-    i = 1
-    For Each pKey In masterPositions.Keys
-        masterPositions(pKey).ExpectedReturn = expReturns(i)
         i = i + 1
     Next pKey
 End Sub
@@ -308,7 +305,7 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, meanR
     CalculateCovarianceFromObjects = res
 End Function
 
-Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, expReturns() As Double, covMat() As Double, ByRef minWeights() As Double, ByRef maxWeights() As Double)
+Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As Double, ByRef minWeights() As Double, ByRef maxWeights() As Double)
     Dim wsDash As Worksheet
     Set wsDash = Sheets(DASH_SHEET)
     Dim inputStart As Long
@@ -317,7 +314,15 @@ Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, expReturns(
     Dim k As Integer, nAssets As Integer
     nAssets = masterPositions.Count
 
+    Dim keysArray() As String
+    keysArray = GetDictKeys(masterPositions)
+
+    ' Dynamically construct expReturns array to pass to the engine
+    Dim expReturns() As Double
+    ReDim expReturns(1 To nAssets)
+
     For k = 1 To nAssets
+        expReturns(k) = masterPositions(keysArray(k)).ExpectedReturn
         wsDash.Cells(inputStart + k - 1, wsDash.Range("AssetMetricsStart").Column - 1).Value = expReturns(k)
     Next k
 

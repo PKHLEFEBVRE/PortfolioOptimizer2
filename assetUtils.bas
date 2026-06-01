@@ -34,48 +34,7 @@ End Sub
 
 
 
-Function CalculateExpectedReturns(histMeanRets() As Double, currDate As Date) As Double()
-    Dim wsDash As Worksheet
-    Dim nAssets As Long, i As Long
-    Dim res() As Double
-    Set wsDash = Sheets(DASH_SHEET)
-    nAssets = UBound(histMeanRets)
-    ReDim res(1 To nAssets)
-    Dim inputStart As Long, inputStartCol As Integer
-    inputStart = wsDash.Range("InputTableStart").Row + 1
-    inputStartCol = wsDash.Range("InputTableStart").Column
-    For i = 1 To nAssets
-        Dim rIdx As Integer
-        rIdx = inputStart + i - 1
-        Dim pCurr As Double, pTgt As Double, wTgt As Double
-        Dim pStop As Double, wStop As Double
-        Dim targetDate As Date
-        pCurr = wsDash.Cells(rIdx, inputStartCol + 1).Value
-        pTgt = wsDash.Cells(rIdx, inputStartCol + 3).Value
-        wTgt = wsDash.Cells(rIdx, inputStartCol + 4).Value
-        pStop = wsDash.Cells(rIdx, inputStartCol + 5).Value
-        wStop = wsDash.Cells(rIdx, inputStartCol + 6).Value
-        targetDate = wsDash.Cells(rIdx, inputStartCol + 7).Value
-        Dim T_years As Double
-        If targetDate > currDate Then
-            T_years = (targetDate - currDate) / 365
-        Else
-            T_years = 1
-        End If
-        Dim termTgt As Double, termStop As Double, termHist As Double
-        termTgt = pTgt * wTgt
-        termStop = pStop * wStop
-        termHist = pCurr * (Exp(histMeanRets(i)) ^ T_years) * (1 - wTgt - wStop)
-        Dim eFinal As Double
-        eFinal = termTgt + termStop + termHist
-        If pCurr > 0 And T_years > 0 Then
-            res(i) = (eFinal / pCurr) ^ (1 / T_years) - 1
-        Else
-            res(i) = 0
-        End If
-    Next i
-    CalculateExpectedReturns = res
-End Function
+
 
 
 

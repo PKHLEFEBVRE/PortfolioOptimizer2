@@ -22,6 +22,7 @@ Private p_TPProba As Double
 Private p_SP As Double
 Private p_SPProba As Double
 Private p_ExpectedReturn As Double
+Private p_TargetDate As Date
 
 
 Public Property Get AssetName() As String
@@ -96,6 +97,14 @@ Public Property Let ExpectedReturn(ByVal value As Double)
     p_ExpectedReturn = value
 End Property
 
+Public Property Get TargetDate() As Date
+    TargetDate = p_TargetDate
+End Property
+
+Public Property Let TargetDate(ByVal value As Date)
+    p_TargetDate = value
+End Property
+
 
 Private Sub Class_Initialize()
     Set p_Metrics = New MetricsCalculatorCls
@@ -131,4 +140,42 @@ End Sub
 Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optional benchRets As Variant)
     ' Individual assets use EWMA volatility by default in original code
     p_Metrics.Calculate p_Prices, p_Dates, p_LogRets, True, riskFreeRate, varConfidence, benchRets, "Asset"
+End Sub
+
+Public Sub ComputeExpectedReturn(histMeanRet As Double, currDate As Date)
+    Dim pCurr As Double, pTgt As Double, wTgt As Double
+    Dim pStop As Double, wStop As Double
+
+    If UBound(p_Prices) >= LBound(p_Prices) Then
+        pCurr = p_Prices(UBound(p_Prices))
+    Else
+        p_ExpectedReturn = 0
+        Exit Sub
+    End If
+
+    pTgt = p_TP
+    wTgt = p_TPProba
+    pStop = p_SP
+    wStop = p_SPProba
+
+    Dim T_years As Double
+    If p_TargetDate > currDate Then
+        T_years = (p_TargetDate - currDate) / 365
+    Else
+        T_years = 1
+    End If
+
+    Dim termTgt As Double, termStop As Double, termHist As Double
+    termTgt = pTgt * wTgt
+    termStop = pStop * wStop
+    termHist = pCurr * (Exp(histMeanRet) ^ T_years) * (1 - wTgt - wStop)
+
+    Dim eFinal As Double
+    eFinal = termTgt + termStop + termHist
+
+    If pCurr > 0 And T_years > 0 Then
+        p_ExpectedReturn = (eFinal / pCurr) ^ (1 / T_years) - 1
+    Else
+        p_ExpectedReturn = 0
+    End If
 End Sub

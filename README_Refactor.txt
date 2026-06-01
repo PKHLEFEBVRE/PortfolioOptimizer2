@@ -74,3 +74,7 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 43. Re-import `Main.bas` (Fixed the `GetDictKeys` macro compile error and cleaned up the `Argument Not Optional` signature mismatches that accidentally broke the helpers when removing `fundAssetNames`).
 
 44. Re-import `Main.bas` (Wrapped the `GetHistoricalDataDatesAndNames` matrix-fetching procedure entirely inside the newly renamed `LoadAllPositions` helper. The orchestration logic no longer sees, relies on, or parses the raw `prices`, `dates`, or `assetNames` arrays!).
+
+45. Re-import `PositionCls.cls`. I added the `TargetDate` attribute and the `ComputeExpectedReturn` method natively inside the object.
+46. Re-import `Main.bas`. The expected return is perfectly derived natively inside the objects, without external arrays.
+47. Re-import `assetUtils.bas`. The legacy `CalculateExpectedReturns` function has been permanently retired.
