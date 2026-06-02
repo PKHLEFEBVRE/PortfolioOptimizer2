@@ -67,7 +67,7 @@ Sub RunUpdateMatrices()
     ' Expected returns are computed natively inside LoadAllPositions! No loop needed here.
 
     ' Output the bare positions dashboard so the user can tweak parameters
-    Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
+    Call PositionDashboard.GenerateDashboard(masterPositions, Nothing)
 
     Application.ScreenUpdating = True
 End Sub

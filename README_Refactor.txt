@@ -145,3 +145,5 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 
 78. Re-import `Main.bas`. I deleted the call to `CalculateStatsFromObjects` and replaced it with a simple inline loop that natively reads `HistoricalMeanReturn` from the initialized objects, resolving the "Sub not defined" compile error!
 79. Re-import `reportUtils.bas`. I removed a piece of legacy code that attempted to divide two dictionary keys (`"DIFF target"` and `"DIFF"`) that no longer exist in the new OOP dashboard output, saving the historical logger from throwing a Key Not Found runtime crash!
+
+80. Re-import `Main.bas` one absolutely final time! I fixed the compile error in `RunUpdateMatrices` that was trying to call the obsolete, un-merged `GeneratePositionsDashboard` macro.
