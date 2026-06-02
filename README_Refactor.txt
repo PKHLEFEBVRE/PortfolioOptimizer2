@@ -133,3 +133,5 @@ All procedural arrays have been eradicated from the optimization process! `Optim
 75. Replace `Report.bas` one final time. I fixed a bug in the scraping logic where the macro was grabbing data from the wrong columns (for example, accidentally saving Downside Beta as Conviction) due to the new layout of the Positions Dashboard. The historical simulation tracking will now log perfectly!
 
 76. Replace `PositionDashboard.bas` one final time. I fixed a formatting bug that accidentally injected a backslash `\"` into the Excel number format string for the Weights table, which would cause an Excel runtime error upon execution!
+
+77. Re-import `Main.bas`, `PositionDashboard.bas`, `allocationLogic.bas`, and `solverUtils.bas` for the final step! The dashboards have been beautifully stylized and functionally mapped to dynamically pass custom limits securely.

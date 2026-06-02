@@ -18,6 +18,8 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
         ' Set default parameters immediately upon creation so they aren't blank
         wsDash.Cells(2, 2).Value = 0.02   ' 2% Risk Free
         wsDash.Cells(3, 2).Value = 0.95   ' 95% Confidence
+        wsDash.Cells(6, 2).Value = 0.7    ' 70% Target Risk Ratio
+        wsDash.Cells(7, 2).Value = 4      ' Max HHI Elements
     End If
 
     If positionsDict.Count = 0 Then Exit Sub
@@ -46,13 +48,22 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
     wsDash.Cells(5, 1).Font.Bold = True
     If IsEmpty(wsDash.Cells(5, 2).Value) Then wsDash.Cells(5, 2).Value = "Enter ID Here"
 
+    wsDash.Cells(6, 1).Value = "Target Risk Ratio:"
+    wsDash.Cells(6, 1).Font.Bold = True
+    If IsEmpty(wsDash.Cells(6, 2).Value) Then wsDash.Cells(6, 2).Value = 0.7
+    wsDash.Cells(6, 2).NumberFormat = "0%"
+
+    wsDash.Cells(7, 1).Value = "Max HHI Elements:"
+    wsDash.Cells(7, 1).Font.Bold = True
+    If IsEmpty(wsDash.Cells(7, 2).Value) Then wsDash.Cells(7, 2).Value = 4
+
     ' Draw borders around Parameters
-    wsDash.Range("A1:B5").Borders.LineStyle = xlContinuous
+    wsDash.Range("A1:B7").Borders.LineStyle = xlContinuous
 
 
     ' --- 2. Build Positions Table ---
     Dim startRow As Long
-    startRow = 8
+    startRow = 10
 
     wsDash.Cells(startRow - 2, 1).Value = "ASSET POSITIONS"
     wsDash.Cells(startRow - 2, 1).Font.Bold = True
@@ -381,7 +392,7 @@ Public Sub GetDashboardInputs(masterPositions As Object)
 
     Dim lastRow As Long
     lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
-    If lastRow < 8 Then Exit Sub ' Table is empty
+    If lastRow < 10 Then Exit Sub ' Table is empty
 
     ' User editable columns in the newly formatted table:
     ' 13 = Conviction
@@ -393,7 +404,7 @@ Public Sub GetDashboardInputs(masterPositions As Object)
     ' 19 = Max Weight
 
     Dim r As Long
-    For r = 9 To lastRow
+    For r = 11 To lastRow
         Dim aName As String
         aName = wsDash.Cells(r, 1).Value
         If aName = "" Then Exit For

@@ -27,19 +27,23 @@ End Sub
 Sub RunUpdateMatrices()
     Application.ScreenUpdating = False
 
-    Dim rf As Double, conf As Double
+    Dim rf As Double, conf As Double, targetRatio As Double, maxHHI As Double
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
     If Not wsNewDash Is Nothing Then
         rf = wsNewDash.Cells(2, 2).Value
         conf = wsNewDash.Cells(3, 2).Value
+        targetRatio = wsNewDash.Cells(6, 2).Value
+        maxHHI = wsNewDash.Cells(7, 2).Value
     End If
     On Error GoTo 0
 
     ' Fail-safe defaults if the Positions Dashboard is deleted or hasn't been created yet
     If rf = 0 Then rf = 0.02
     If conf = 0 Then conf = 0.95
+    If targetRatio = 0 Then targetRatio = 0.7
+    If maxHHI = 0 Then maxHHI = 4
 
     Dim masterPositions As Object
     Dim benchPositions As Object
@@ -75,19 +79,23 @@ Sub RunAllSolvers()
     Application.ScreenUpdating = False
     Sheets(ENGINE_SHEET).Activate
 
-    Dim rf As Double, conf As Double
+    Dim rf As Double, conf As Double, targetRatio As Double, maxHHI As Double
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
     If Not wsNewDash Is Nothing Then
         rf = wsNewDash.Cells(2, 2).Value
         conf = wsNewDash.Cells(3, 2).Value
+        targetRatio = wsNewDash.Cells(6, 2).Value
+        maxHHI = wsNewDash.Cells(7, 2).Value
     End If
     On Error GoTo 0
 
     ' Fail-safe defaults if the Positions Dashboard is deleted or hasn't been created yet
     If rf = 0 Then rf = 0.02
     If conf = 0 Then conf = 0.95
+    If targetRatio = 0 Then targetRatio = 0.7
+    If maxHHI = 0 Then maxHHI = 4
 
     ' 1. & 2. Fetch raw data and Cache OOP objects FIRST
     Dim masterPositions As Object
@@ -114,7 +122,7 @@ Sub RunAllSolvers()
     Dim strategies As Variant
     strategies = Array("ERC UNCSTRD", "ER/VOL", "SHARPE", "CUSTOM", "MEAN")
 
-    Call PrepEngineSheetAndConstraints(masterPositions, covMat)
+    Call PrepEngineSheetAndConstraints(masterPositions, covMat, maxHHI)
     Call SyncSimWeightsHeaders(dates, GetDictKeys(masterPositions), strategies)
 
     Dim masterPortfolios As Object
@@ -132,7 +140,7 @@ Sub RunAllSolvers()
     Next pKey
 
     ' 7. Optimize and Simulate Active Strategies
-    Call OptimizeAndSimulateStrategies(strategies, masterPositions, masterPortfolios, rf, conf, benchPort)
+    Call OptimizeAndSimulateStrategies(strategies, masterPositions, masterPortfolios, rf, conf, benchPort, targetRatio)
 
     ' 8. Output to Dashboards
     Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
@@ -314,7 +322,7 @@ Private Function CalculateCovarianceFromObjects(masterPositions As Object, meanR
     CalculateCovarianceFromObjects = res
 End Function
 
-Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As Double)
+Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As Double, maxHHI As Double)
     Dim k As Integer, nAssets As Integer
     nAssets = masterPositions.Count
 
@@ -329,10 +337,10 @@ Private Sub PrepEngineSheetAndConstraints(masterPositions As Object, covMat() As
         expReturns(k) = masterPositions(keysArray(k)).ExpectedReturn
     Next k
 
-    Call solverUtils.WriteToEngine(covMat, expReturns)
+    Call solverUtils.WriteToEngine(covMat, expReturns, maxHHI)
 End Sub
 
-Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchPort As SimulatedPortfolioCls)
+Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions As Object, masterPortfolios As Object, rf As Double, conf As Double, benchPort As SimulatedPortfolioCls, targetRatio As Double)
     Dim optimizer As OptimizerCls
     Set optimizer = New OptimizerCls
 
@@ -371,7 +379,7 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions
 
     ' Apply Risk Overlay
     Dim riskDict As Object
-    Set riskDict = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"))
+    Set riskDict = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"), targetRatio)
 
     Dim pKey As Variant
     For Each pKey In masterPortfolios.Keys

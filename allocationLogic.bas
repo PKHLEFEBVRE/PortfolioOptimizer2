@@ -5,7 +5,7 @@ Option Explicit
 ' DOWNSIDE BETA & CVaR EQUITY ALLOCATION MODULE
 ' =========================================================================
 
-Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As SimulatedPortfolioCls) As Object
+Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As SimulatedPortfolioCls, targetRatio As Double) As Object
     Dim DSBeta As Double, DDFactor As Double
     Dim CVaRFactor As Double, benchCVaR As Double, portCVaR As Double
     Dim SemiDevFactor As Double, benchSemiDev As Double, portSemiDev As Double
@@ -42,7 +42,7 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     ' 1. Downside Beta
     DSBeta = ComputeEmaDownsideBeta(benchRets, chartRets, 256)
     If DSBeta > 0 Then
-        DDFactor = Application.WorksheetFunction.Min((1 / DSBeta) * 0.7, 0.95)
+        DDFactor = Application.WorksheetFunction.Min((1 / DSBeta) * targetRatio, 0.95)
     Else
         DDFactor = 0.95
     End If
@@ -51,7 +51,7 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     benchCVaR = CalculateHistoricalCVaR(benchRets, 0.95)
     portCVaR = CalculateHistoricalCVaR(chartRets, 0.95)
     Dim targetCVaR As Double
-    targetCVaR = benchCVaR * 0.7
+    targetCVaR = benchCVaR * targetRatio
     If portCVaR < 0 And targetCVaR < 0 Then
         CVaRFactor = Application.WorksheetFunction.Min(targetCVaR / portCVaR, 0.95)
     Else
@@ -61,8 +61,8 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     ' 3. Semi-Dev Factor
     benchSemiDev = CalculateSemiDeviation(benchRets, 0)
     portSemiDev = CalculateSemiDeviation(chartRets, 0)
-    If portSemiDev > 0 And portSemiDev > (benchSemiDev * 0.7) Then
-        SemiDevFactor = Application.WorksheetFunction.Min((benchSemiDev * 0.7) / portSemiDev, 0.95)
+    If portSemiDev > 0 And portSemiDev > (benchSemiDev * targetRatio) Then
+        SemiDevFactor = Application.WorksheetFunction.Min((benchSemiDev * targetRatio) / portSemiDev, 0.95)
     Else
         SemiDevFactor = 0.95
     End If
@@ -70,8 +70,8 @@ Function ComputeFinalRiskFactor(portMean As SimulatedPortfolioCls, portBench As 
     ' 4. Historical MDD Factor
     benchMDD = CalculateMaximumDrawdown(benchRets)
     portMDD = CalculateMaximumDrawdown(chartRets)
-    If portMDD < 0 And portMDD < (benchMDD * 0.7) Then
-        HistoricalMDDFactor = Application.WorksheetFunction.Min((benchMDD * 0.7) / portMDD, 0.95)
+    If portMDD < 0 And portMDD < (benchMDD * targetRatio) Then
+        HistoricalMDDFactor = Application.WorksheetFunction.Min((benchMDD * targetRatio) / portMDD, 0.95)
     Else
         HistoricalMDDFactor = 0.95
     End If
