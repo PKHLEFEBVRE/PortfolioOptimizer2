@@ -64,10 +64,7 @@ Sub RunUpdateMatrices()
     Dim lastDate As Date
     lastDate = tmpDates(UBound(tmpDates))
 
-    Dim pKey As Variant
-    For Each pKey In masterPositions.Keys
-        masterPositions(pKey).ComputeExpectedReturn lastDate
-    Next pKey
+    ' Expected returns are computed natively inside LoadAllPositions! No loop needed here.
 
     ' Output the bare positions dashboard so the user can tweak parameters
     Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
@@ -113,7 +110,14 @@ Sub RunAllSolvers()
 
     ' 3. Compute stats dynamically using the PositionCls objects
     Dim meanRets() As Double
-    Call CalculateStatsFromObjects(masterPositions, lastDate, meanRets)
+    ReDim meanRets(1 To masterPositions.Count)
+    Dim i As Integer
+    i = 1
+    Dim pKey As Variant
+    For Each pKey In masterPositions.Keys
+        meanRets(i) = masterPositions(pKey).HistoricalMeanReturn
+        i = i + 1
+    Next pKey
 
     Dim covMat() As Double
     covMat = CalculateCovarianceFromObjects(masterPositions, meanRets)
@@ -143,8 +147,7 @@ Sub RunAllSolvers()
     Call OptimizeAndSimulateStrategies(strategies, masterPositions, masterPortfolios, rf, conf, benchPort, targetRatio)
 
     ' 8. Output to Dashboards
-    Call PositionDashboard.GeneratePositionsDashboard(masterPositions)
-    Call PositionDashboard.GeneratePortfoliosDashboard(masterPortfolios)
+    Call PositionDashboard.GenerateDashboard(masterPositions, masterPortfolios)
 
     Sheets(ENGINE_SHEET).Visible = False
 
@@ -233,6 +236,16 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
     ' AFTER all positions are initialized, overwrite the defaults using the user's manual dashboard inputs!
     Call PositionDashboard.GetDashboardInputs(outFundPositions)
 
+    ' Compute Metrics and Expected Returns for all positions
+    Dim pKey As Variant
+    For Each pKey In outBenchPositions.Keys
+        outBenchPositions(pKey).ComputeMetrics rf, conf
+    Next pKey
+
+    For Each pKey In outFundPositions.Keys
+        outFundPositions(pKey).ComputeMetrics rf, conf
+        outFundPositions(pKey).ComputeExpectedReturn
+    Next pKey
 End Sub
 
 Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Date, rf As Double, conf As Double) As SimulatedPortfolioCls
@@ -252,27 +265,6 @@ Private Function BuildBenchmarkPortfolio(benchPositions As Object, dates() As Da
     Set BuildBenchmarkPortfolio = benchPort
 End Function
 
-
-Private Sub CalculateStatsFromObjects(masterPositions As Object, lastDate As Date, ByRef meanRets() As Double)
-    Dim nAssets As Integer
-    nAssets = masterPositions.Count
-    ReDim meanRets(1 To nAssets)
-
-    Dim i As Integer
-    i = 1
-    Dim pKey As Variant
-    For Each pKey In masterPositions.Keys
-        Dim pos As PositionCls
-        Set pos = masterPositions(pKey)
-
-        ' Compute expected returns which internally calculates HistoricalMeanReturn
-        pos.ComputeExpectedReturn lastDate
-
-        ' Extract the historical mean directly from the object
-        meanRets(i) = pos.HistoricalMeanReturn
-        i = i + 1
-    Next pKey
-End Sub
 
 Private Function CalculateCovarianceFromObjects(masterPositions As Object, meanRets() As Double) As Double()
     Dim nAssets As Integer

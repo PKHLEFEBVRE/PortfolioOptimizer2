@@ -1,7 +1,7 @@
 Attribute VB_Name = "PositionDashboard"
 Option Explicit
 
-Public Sub GeneratePositionsDashboard(positionsDict As Object)
+Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
     Dim wsDash As Worksheet
     Dim sheetName As String
     sheetName = "Positions Dashboard"
@@ -165,20 +165,15 @@ Public Sub GeneratePositionsDashboard(positionsDict As Object)
         wsDash.Range(wsDash.Cells(startRow + 1, c), wsDash.Cells(startRow + positionsDict.Count, c)).NumberFormat = "0.00"
     Next c
 
-    wsDash.Columns.AutoFit
-End Sub
+    If portfoliosDict Is Nothing Then
+        wsDash.Columns.AutoFit
+        Exit Sub
+    End If
 
-Public Sub GeneratePortfoliosDashboard(portfoliosDict As Object)
-    Dim wsDash As Worksheet
-    Dim sheetName As String
-    sheetName = "Positions Dashboard"
-
-    On Error Resume Next
-    Set wsDash = ThisWorkbook.Sheets(sheetName)
-    On Error GoTo 0
-
-    If wsDash Is Nothing Then Exit Sub
-    If portfoliosDict.Count = 0 Then Exit Sub
+    If portfoliosDict.Count = 0 Then
+        wsDash.Columns.AutoFit
+        Exit Sub
+    End If
 
     Dim lastRow As Long
     lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row

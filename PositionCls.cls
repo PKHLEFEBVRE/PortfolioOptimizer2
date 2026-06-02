@@ -169,12 +169,14 @@ Public Sub ComputeMetrics(riskFreeRate As Double, varConfidence As Double, Optio
     p_Metrics.Calculate p_Prices, p_Dates, p_LogRets, True, riskFreeRate, varConfidence, benchPort, "Asset"
 End Sub
 
-Public Sub ComputeExpectedReturn(currDate As Date)
+Public Sub ComputeExpectedReturn()
     Dim pCurr As Double, pTgt As Double, wTgt As Double
     Dim pStop As Double, wStop As Double
+    Dim currDate As Date
 
     If UBound(p_Prices) >= LBound(p_Prices) Then
         pCurr = p_Prices(UBound(p_Prices))
+        currDate = p_Dates(UBound(p_Dates))
     Else
         p_ExpectedReturn = 0
         Exit Sub
