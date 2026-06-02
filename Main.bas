@@ -26,8 +26,10 @@ End Sub
 
 Sub RunUpdateMatrices()
     Application.ScreenUpdating = False
+    Dim pKey As Variant
 
     Dim rf As Double, conf As Double, targetRatio As Double, maxHHI As Double
+    Dim i As Integer
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
@@ -51,7 +53,6 @@ Sub RunUpdateMatrices()
 
     If masterPositions.Count < 1 Then Exit Sub
 
-    Dim pKey As Variant
     For Each pKey In masterPositions.Keys
         masterPositions(pKey).ComputeMetrics rf, conf
     Next pKey
@@ -77,6 +78,8 @@ Sub RunAllSolvers()
     Sheets(ENGINE_SHEET).Activate
 
     Dim rf As Double, conf As Double, targetRatio As Double, maxHHI As Double
+    Dim i As Integer
+    Dim pKey As Variant
     On Error Resume Next
     Dim wsNewDash As Worksheet
     Set wsNewDash = Sheets("Positions Dashboard")
@@ -111,9 +114,7 @@ Sub RunAllSolvers()
     ' 3. Compute stats dynamically using the PositionCls objects
     Dim meanRets() As Double
     ReDim meanRets(1 To masterPositions.Count)
-    Dim i As Integer
     i = 1
-    Dim pKey As Variant
     For Each pKey In masterPositions.Keys
         meanRets(i) = masterPositions(pKey).HistoricalMeanReturn
         i = i + 1
@@ -138,7 +139,6 @@ Sub RunAllSolvers()
     masterPortfolios.Add "BENCHMARK", benchPort
 
     ' 6. Inject benchPort into Fund Positions
-    Dim pKey As Variant
     For Each pKey In masterPositions.Keys
         masterPositions(pKey).ComputeMetrics rf, conf, benchPort
     Next pKey
@@ -237,7 +237,6 @@ Private Sub LoadAllPositions(ByRef outFundPositions As Object, ByRef outBenchPos
     Call PositionDashboard.GetDashboardInputs(outFundPositions)
 
     ' Compute Metrics and Expected Returns for all positions
-    Dim pKey As Variant
     For Each pKey In outBenchPositions.Keys
         outBenchPositions(pKey).ComputeMetrics rf, conf
     Next pKey
@@ -373,7 +372,6 @@ Private Sub OptimizeAndSimulateStrategies(strategies As Variant, masterPositions
     Dim riskDict As Object
     Set riskDict = allocationLogic.ComputeFinalRiskFactor(masterPortfolios("MEAN"), masterPortfolios("BENCHMARK"), targetRatio)
 
-    Dim pKey As Variant
     For Each pKey In masterPortfolios.Keys
         Dim p As SimulatedPortfolioCls
         Set p = masterPortfolios(pKey)
@@ -394,5 +392,16 @@ Sub RunClean()
     On Error Resume Next
     Sheets(CHART_SHEET).Cells.ClearContents
     Sheets(WEIGHTS_SHEET).Cells.ClearContents
+
+    Dim wsDash As Worksheet
+    Set wsDash = Sheets("Positions Dashboard")
+    If Not wsDash Is Nothing Then
+        Dim lastRow As Long
+        lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+        If lastRow >= 8 Then
+            ' Preserve Rows 1-7 (Parameters and Dashboard Titles)
+            wsDash.Range(wsDash.Cells(8, 1), wsDash.Cells(lastRow + 100, 100)).Clear
+        End If
+    End If
     On Error GoTo 0
 End Sub

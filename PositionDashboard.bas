@@ -24,6 +24,10 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
 
     If positionsDict.Count = 0 Then Exit Sub
 
+    Dim rowIdx As Long
+    Dim key As Variant
+    Dim c As Variant
+
     ' --- 1. Output Parameters Table at the top ---
     wsDash.Cells(1, 1).Value = "PARAMETERS"
     wsDash.Cells(1, 1).Font.Bold = True
@@ -106,9 +110,7 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
     Dim outData() As Variant
     ReDim outData(1 To positionsDict.Count, 1 To UBound(headers) + 1)
 
-    Dim rowIdx As Long
     rowIdx = 1
-    Dim key As Variant
     For Each key In positionsDict.Keys
         Dim p As PositionCls
         Set p = positionsDict(key)
@@ -153,7 +155,6 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
     ' Format Percentages
     Dim pctCols As Variant
     pctCols = Array(3, 4, 6, 7, 9, 10, 11, 15, 17, 18, 19)
-    Dim c As Variant
     For Each c In pctCols
         wsDash.Range(wsDash.Cells(startRow + 1, c), wsDash.Cells(startRow + positionsDict.Count, c)).NumberFormat = "0.00%"
     Next c
@@ -175,12 +176,18 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
         Exit Sub
     End If
 
-    Dim lastRow As Long
-    lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
+    ' Explicitly calculate where the portfolios should go based on the positions table size
+    Dim endOfPositions As Long
+    endOfPositions = startRow + positionsDict.Count + 1
+
+    ' Clear out any old portfolio tables from previous simulations before printing the new ones!
+    ' This perfectly preserves the Parameters table (Rows 1-7) and the Positions table (Rows 10 to endOfPositions)
+    ' where the user might have manually typed in TP, Proba, and Weights!
+    wsDash.Rows((endOfPositions + 2) & ":" & wsDash.Rows.Count).Clear
 
     ' --- 3. Output Portfolios Metrics Table ---
     Dim mStartRow As Long
-    mStartRow = lastRow + 5
+    mStartRow = endOfPositions + 4
 
     wsDash.Cells(mStartRow - 2, 1).Value = "SIMULATED PORTFOLIOS"
     wsDash.Cells(mStartRow - 2, 1).Font.Bold = True
@@ -211,9 +218,7 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
     Dim mData() As Variant
     ReDim mData(1 To portfoliosDict.Count, 1 To UBound(mHeaders) + 1)
 
-    Dim rowIdx As Long
     rowIdx = 1
-    Dim key As Variant
     For Each key In portfoliosDict.Keys
         Dim port As SimulatedPortfolioCls
         Set port = portfoliosDict(key)
@@ -256,7 +261,6 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
 
     Dim mPctCols As Variant
     mPctCols = Array(2, 3, 5, 7, 8, 9, 11, 12, 13, 14, 15)
-    Dim c As Variant
     For Each c In mPctCols
         wsDash.Range(wsDash.Cells(mStartRow + 1, c), wsDash.Cells(mStartRow + portfoliosDict.Count, c)).NumberFormat = "0.00%"
     Next c
@@ -269,9 +273,8 @@ Public Sub GenerateDashboard(positionsDict As Object, portfoliosDict As Object)
 
 
     ' --- 4. Output Portfolios Weights Table ---
-    lastRow = wsDash.Cells(wsDash.Rows.Count, 1).End(xlUp).Row
     Dim wStartRow As Long
-    wStartRow = lastRow + 5
+    wStartRow = mStartRow + portfoliosDict.Count + 4
 
     wsDash.Cells(wStartRow - 2, 1).Value = "TARGET WEIGHT ALLOCATIONS"
     wsDash.Cells(wStartRow - 2, 1).Font.Bold = True
